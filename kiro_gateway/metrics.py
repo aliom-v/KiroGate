@@ -18,9 +18,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 """
-Prometheus 指标模块。
+Prometheus metrics module.
 
-提供结构化的应用指标收集和导出。
+Provides structured application metrics collection and export.
 """
 
 import time
@@ -31,66 +31,68 @@ from threading import Lock
 
 from loguru import logger
 
+from kiro_gateway.config import APP_VERSION
+
 
 @dataclass
 class MetricsBucket:
-    """指标桶，用于存储直方图数据。"""
-    le: float  # 上界
+    """Metrics bucket for histogram data."""
+    le: float  # Upper bound
     count: int = 0
 
 
 class PrometheusMetrics:
     """
-    Prometheus 风格的指标收集器。
+    Prometheus-style metrics collector.
 
-    收集以下指标：
-    - 请求总数（按端点、状态码、模型）
-    - 请求延迟直方图
-    - Token 使用量（输入/输出）
-    - 重试次数
-    - 活跃连接数
-    - 错误计数
+    Collects the following metrics:
+    - Total requests (by endpoint, status code, model)
+    - Request latency histogram
+    - Token usage (input/output)
+    - Retry count
+    - Active connections
+    - Error count
     """
 
-    # 延迟直方图桶边界（秒）
+    # Latency histogram bucket boundaries (seconds)
     LATENCY_BUCKETS = [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, float('inf')]
 
     def __init__(self):
-        """初始化指标收集器。"""
+        """Initialize metrics collector."""
         self._lock = Lock()
 
-        # 计数器
+        # Counters
         self._request_total: Dict[str, int] = defaultdict(int)  # {endpoint:status:model: count}
         self._error_total: Dict[str, int] = defaultdict(int)  # {error_type: count}
         self._retry_total: Dict[str, int] = defaultdict(int)  # {endpoint: count}
 
-        # Token 计数器
+        # Token counters
         self._input_tokens_total: Dict[str, int] = defaultdict(int)  # {model: tokens}
         self._output_tokens_total: Dict[str, int] = defaultdict(int)  # {model: tokens}
 
-        # 直方图
+        # Histograms
         self._latency_histogram: Dict[str, List[int]] = defaultdict(
             lambda: [0] * len(self.LATENCY_BUCKETS)
         )  # {endpoint: [bucket_counts]}
         self._latency_sum: Dict[str, float] = defaultdict(float)  # {endpoint: sum}
         self._latency_count: Dict[str, int] = defaultdict(int)  # {endpoint: count}
 
-        # 仪表盘
+        # Gauges
         self._active_connections = 0
         self._cache_size = 0
         self._token_valid = False
 
-        # 启动时间
+        # Start time
         self._start_time = time.time()
 
     def inc_request(self, endpoint: str, status_code: int, model: str = "unknown") -> None:
         """
-        增加请求计数。
+        Increment request count.
 
         Args:
-            endpoint: API 端点
-            status_code: HTTP 状态码
-            model: 模型名称
+            endpoint: API endpoint
+            status_code: HTTP status code
+            model: Model name
         """
         with self._lock:
             key = f"{endpoint}:{status_code}:{model}"
@@ -98,96 +100,96 @@ class PrometheusMetrics:
 
     def inc_error(self, error_type: str) -> None:
         """
-        增加错误计数。
+        Increment error count.
 
         Args:
-            error_type: 错误类型
+            error_type: Error type
         """
         with self._lock:
             self._error_total[error_type] += 1
 
     def inc_retry(self, endpoint: str) -> None:
         """
-        增加重试计数。
+        Increment retry count.
 
         Args:
-            endpoint: API 端点
+            endpoint: API endpoint
         """
         with self._lock:
             self._retry_total[endpoint] += 1
 
     def observe_latency(self, endpoint: str, latency: float) -> None:
         """
-        记录请求延迟。
+        Record request latency.
 
         Args:
-            endpoint: API 端点
-            latency: 延迟时间（秒）
+            endpoint: API endpoint
+            latency: Latency in seconds
         """
         with self._lock:
-            # 更新直方图桶
+            # Update histogram buckets
             for i, le in enumerate(self.LATENCY_BUCKETS):
                 if latency <= le:
                     self._latency_histogram[endpoint][i] += 1
 
-            # 更新总和和计数
+            # Update sum and count
             self._latency_sum[endpoint] += latency
             self._latency_count[endpoint] += 1
 
     def add_tokens(self, model: str, input_tokens: int, output_tokens: int) -> None:
         """
-        添加 token 使用量。
+        Add token usage.
 
         Args:
-            model: 模型名称
-            input_tokens: 输入 token 数
-            output_tokens: 输出 token 数
+            model: Model name
+            input_tokens: Input token count
+            output_tokens: Output token count
         """
         with self._lock:
             self._input_tokens_total[model] += input_tokens
             self._output_tokens_total[model] += output_tokens
 
     def set_active_connections(self, count: int) -> None:
-        """设置活跃连接数。"""
+        """Set active connection count."""
         with self._lock:
             self._active_connections = count
 
     def inc_active_connections(self) -> None:
-        """增加活跃连接数。"""
+        """Increment active connection count."""
         with self._lock:
             self._active_connections += 1
 
     def dec_active_connections(self) -> None:
-        """减少活跃连接数。"""
+        """Decrement active connection count."""
         with self._lock:
             self._active_connections = max(0, self._active_connections - 1)
 
     def set_cache_size(self, size: int) -> None:
-        """设置缓存大小。"""
+        """Set cache size."""
         with self._lock:
             self._cache_size = size
 
     def set_token_valid(self, valid: bool) -> None:
-        """设置 token 有效状态。"""
+        """Set token validity status."""
         with self._lock:
             self._token_valid = valid
 
     def get_metrics(self) -> Dict:
         """
-        获取所有指标。
+        Get all metrics.
 
         Returns:
-            指标字典
+            Metrics dictionary
         """
         with self._lock:
-            # 计算平均延迟和百分位数
+            # Calculate average latency and percentiles
             latency_stats = {}
             for endpoint, counts in self._latency_histogram.items():
                 total_count = self._latency_count[endpoint]
                 if total_count > 0:
                     avg = self._latency_sum[endpoint] / total_count
 
-                    # 计算 P50, P95, P99
+                    # Calculate P50, P95, P99
                     p50 = self._calculate_percentile(counts, total_count, 0.50)
                     p95 = self._calculate_percentile(counts, total_count, 0.95)
                     p99 = self._calculate_percentile(counts, total_count, 0.99)
@@ -201,6 +203,7 @@ class PrometheusMetrics:
                     }
 
             return {
+                "version": APP_VERSION,
                 "uptime_seconds": round(time.time() - self._start_time, 2),
                 "requests": {
                     "total": dict(self._request_total),
@@ -226,15 +229,15 @@ class PrometheusMetrics:
 
     def _calculate_percentile(self, bucket_counts: List[int], total: int, percentile: float) -> float:
         """
-        从直方图桶计算百分位数。
+        Calculate percentile from histogram buckets.
 
         Args:
-            bucket_counts: 桶计数列表
-            total: 总计数
-            percentile: 百分位数（0-1）
+            bucket_counts: Bucket count list
+            total: Total count
+            percentile: Percentile (0-1)
 
         Returns:
-            估算的百分位数值
+            Estimated percentile value
         """
         if total == 0:
             return 0.0
@@ -245,13 +248,13 @@ class PrometheusMetrics:
         for i, count in enumerate(bucket_counts):
             cumulative += count
             if cumulative >= target:
-                # 返回桶的上界作为估算值
+                # Return bucket upper bound as estimate
                 return self.LATENCY_BUCKETS[i] if self.LATENCY_BUCKETS[i] != float('inf') else 120.0
 
-        return self.LATENCY_BUCKETS[-2]  # 返回最后一个有限桶
+        return self.LATENCY_BUCKETS[-2]  # Return last finite bucket
 
     def _aggregate_by_endpoint(self) -> Dict[str, int]:
-        """按端点聚合请求数。"""
+        """Aggregate request count by endpoint."""
         result = defaultdict(int)
         for key, count in self._request_total.items():
             endpoint = key.split(":")[0]
@@ -259,7 +262,7 @@ class PrometheusMetrics:
         return dict(result)
 
     def _aggregate_by_status(self) -> Dict[str, int]:
-        """按状态码聚合请求数。"""
+        """Aggregate request count by status code."""
         result = defaultdict(int)
         for key, count in self._request_total.items():
             status = key.split(":")[1]
@@ -267,7 +270,7 @@ class PrometheusMetrics:
         return dict(result)
 
     def _aggregate_by_model(self) -> Dict[str, int]:
-        """按模型聚合请求数。"""
+        """Aggregate request count by model."""
         result = defaultdict(int)
         for key, count in self._request_total.items():
             parts = key.split(":")
@@ -278,15 +281,20 @@ class PrometheusMetrics:
 
     def export_prometheus(self) -> str:
         """
-        导出 Prometheus 格式的指标。
+        Export metrics in Prometheus format.
 
         Returns:
-            Prometheus 文本格式的指标
+            Prometheus text format metrics
         """
         lines = []
 
         with self._lock:
-            # 请求总数
+            # Info metric with version
+            lines.append("# HELP kirogate_info KiroGate version information")
+            lines.append("# TYPE kirogate_info gauge")
+            lines.append(f'kirogate_info{{version="{APP_VERSION}"}} 1')
+
+            # Total requests
             lines.append("# HELP kirogate_requests_total Total number of requests")
             lines.append("# TYPE kirogate_requests_total counter")
             for key, count in self._request_total.items():
@@ -296,19 +304,19 @@ class PrometheusMetrics:
                     f'kirogate_requests_total{{endpoint="{endpoint}",status="{status}",model="{model}"}} {count}'
                 )
 
-            # 错误总数
+            # Total errors
             lines.append("# HELP kirogate_errors_total Total number of errors")
             lines.append("# TYPE kirogate_errors_total counter")
             for error_type, count in self._error_total.items():
                 lines.append(f'kirogate_errors_total{{type="{error_type}"}} {count}')
 
-            # 重试总数
+            # Total retries
             lines.append("# HELP kirogate_retries_total Total number of retries")
             lines.append("# TYPE kirogate_retries_total counter")
             for endpoint, count in self._retry_total.items():
                 lines.append(f'kirogate_retries_total{{endpoint="{endpoint}"}} {count}')
 
-            # Token 使用量
+            # Token usage
             lines.append("# HELP kirogate_tokens_total Total tokens used")
             lines.append("# TYPE kirogate_tokens_total counter")
             for model, tokens in self._input_tokens_total.items():
@@ -316,7 +324,7 @@ class PrometheusMetrics:
             for model, tokens in self._output_tokens_total.items():
                 lines.append(f'kirogate_tokens_total{{model="{model}",type="output"}} {tokens}')
 
-            # 延迟直方图
+            # Latency histogram
             lines.append("# HELP kirogate_request_duration_seconds Request duration histogram")
             lines.append("# TYPE kirogate_request_duration_seconds histogram")
             for endpoint, counts in self._latency_histogram.items():
@@ -335,7 +343,7 @@ class PrometheusMetrics:
                     f'kirogate_request_duration_seconds_count{{endpoint="{endpoint}"}} {self._latency_count[endpoint]}'
                 )
 
-            # 仪表盘
+            # Gauges
             lines.append("# HELP kirogate_active_connections Current active connections")
             lines.append("# TYPE kirogate_active_connections gauge")
             lines.append(f"kirogate_active_connections {self._active_connections}")
@@ -355,5 +363,5 @@ class PrometheusMetrics:
         return "\n".join(lines) + "\n"
 
 
-# 全局指标实例
+# Global metrics instance
 metrics = PrometheusMetrics()

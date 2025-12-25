@@ -18,13 +18,13 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 """
-KiroGate FastAPI 路由。
+KiroGate FastAPI routes.
 
-包含所有 API 端点：
-- / 和 /health: 健康检查
-- /v1/models: 模型列表
-- /v1/chat/completions: OpenAI 兼容的聊天补全
-- /v1/messages: Anthropic 兼容的消息 API
+Contains all API endpoints:
+- / and /health: Health check
+- /v1/models: Model list
+- /v1/chat/completions: OpenAI compatible chat completions
+- /v1/messages: Anthropic compatible messages API
 """
 
 import json
@@ -57,48 +57,53 @@ from kiro_gateway.cache import ModelInfoCache
 from kiro_gateway.request_handler import RequestHandler
 from kiro_gateway.utils import get_kiro_headers
 
-# 初始化速率限制器
+# Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
+
+# 预创建速率限制装饰器（避免重复创建）
+_rate_limit_decorator_cache = None
 
 
 def rate_limit_decorator():
     """
-    条件性速率限制装饰器。
+    Conditional rate limit decorator (cached).
 
-    当 RATE_LIMIT_PER_MINUTE > 0 时应用速率限制，
-    当 RATE_LIMIT_PER_MINUTE = 0 时禁用速率限制。
+    Applies rate limit when RATE_LIMIT_PER_MINUTE > 0,
+    disabled when RATE_LIMIT_PER_MINUTE = 0.
     """
-    if RATE_LIMIT_PER_MINUTE > 0:
-        return limiter.limit(f"{RATE_LIMIT_PER_MINUTE}/minute")
-    else:
-        # 返回空装饰器（不应用速率限制）
-        return lambda func: func
+    global _rate_limit_decorator_cache
+    if _rate_limit_decorator_cache is None:
+        if RATE_LIMIT_PER_MINUTE > 0:
+            _rate_limit_decorator_cache = limiter.limit(f"{RATE_LIMIT_PER_MINUTE}/minute")
+        else:
+            _rate_limit_decorator_cache = lambda func: func
+    return _rate_limit_decorator_cache
 
-# 导入 debug_logger
+
 try:
     from kiro_gateway.debug_logger import debug_logger
 except ImportError:
     debug_logger = None
 
 
-# --- 安全方案 ---
+# --- Security scheme ---
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 async def verify_api_key(auth_header: str = Security(api_key_header)) -> bool:
     """
-    验证 Authorization header 中的 API 密钥。
+    Verify API key in Authorization header.
 
-    期望格式: "Bearer {PROXY_API_KEY}"
+    Expected format: "Bearer {PROXY_API_KEY}"
 
     Args:
-        auth_header: Authorization header 的值
+        auth_header: Authorization header value
 
     Returns:
-        True 如果密钥有效
+        True if key is valid
 
     Raises:
-        HTTPException: 401 如果密钥无效或缺失
+        HTTPException: 401 if key is invalid or missing
     """
     if not auth_header or not secrets.compare_digest(auth_header, f"Bearer {PROXY_API_KEY}"):
         logger.warning("Access attempt with invalid API key.")
@@ -111,26 +116,26 @@ async def verify_anthropic_api_key(
     auth_header: str = Security(api_key_header)
 ) -> bool:
     """
-    验证 Anthropic 或 OpenAI 格式的 API 密钥。
+    Verify Anthropic or OpenAI format API key.
 
-    Anthropic 使用 x-api-key header，但我们也支持
-    标准的 Authorization: Bearer 格式以保持兼容性。
+    Anthropic uses x-api-key header, but we also support
+    standard Authorization: Bearer format for compatibility.
 
     Args:
-        x_api_key: x-api-key header 的值（Anthropic 格式）
-        auth_header: Authorization header 的值（OpenAI 格式）
+        x_api_key: x-api-key header value (Anthropic format)
+        auth_header: Authorization header value (OpenAI format)
 
     Returns:
-        True 如果密钥有效
+        True if key is valid
 
     Raises:
-        HTTPException: 401 如果密钥无效或缺失
+        HTTPException: 401 if key is invalid or missing
     """
-    # 检查 x-api-key（Anthropic 格式）
+    # Check x-api-key (Anthropic format)
     if x_api_key and secrets.compare_digest(x_api_key, PROXY_API_KEY):
         return True
 
-    # 检查 Authorization: Bearer（OpenAI 格式）
+    # Check Authorization: Bearer (OpenAI format)
     if auth_header and secrets.compare_digest(auth_header, f"Bearer {PROXY_API_KEY}"):
         return True
 
@@ -138,17 +143,17 @@ async def verify_anthropic_api_key(
     raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
 
-# --- 路由器 ---
+# --- Router ---
 router = APIRouter()
 
 
 @router.get("/")
 async def root():
     """
-    健康检查端点。
+    Health check endpoint.
 
     Returns:
-        应用状态和版本信息
+        Application status and version info
     """
     return {
         "status": "ok",
@@ -160,26 +165,25 @@ async def root():
 @router.get("/health")
 async def health(request: Request):
     """
-    详细的健康检查。
+    Detailed health check.
 
     Returns:
-        状态、时间戳、版本和运行时信息
+        Status, timestamp, version and runtime info
     """
     from kiro_gateway.metrics import metrics
 
     auth_manager: KiroAuthManager = request.app.state.auth_manager
     model_cache: ModelInfoCache = request.app.state.model_cache
 
-    # 检查 token 是否有效
+    # Check if token is valid
     token_valid = False
     try:
-        # 非阻塞检查 token
         if auth_manager._access_token and not auth_manager.is_token_expiring_soon():
             token_valid = True
     except Exception:
         token_valid = False
 
-    # 更新指标
+    # Update metrics
     metrics.set_cache_size(model_cache.size)
     metrics.set_token_valid(token_valid)
 
@@ -196,10 +200,10 @@ async def health(request: Request):
 @router.get("/metrics")
 async def get_metrics():
     """
-    获取 JSON 格式的应用指标。
+    Get application metrics in JSON format.
 
     Returns:
-        指标数据字典
+        Metrics data dictionary
     """
     from kiro_gateway.metrics import metrics
     return metrics.get_metrics()
@@ -208,10 +212,10 @@ async def get_metrics():
 @router.get("/metrics/prometheus")
 async def get_prometheus_metrics():
     """
-    获取 Prometheus 格式的应用指标。
+    Get application metrics in Prometheus format.
 
     Returns:
-        Prometheus 文本格式的指标
+        Prometheus text format metrics
     """
     from kiro_gateway.metrics import metrics
     return Response(
@@ -224,47 +228,31 @@ async def get_prometheus_metrics():
 @rate_limit_decorator()
 async def get_models(request: Request):
     """
-    返回可用模型列表。
+    Return available models list.
 
-    使用静态模型列表，支持从 API 动态更新。
-    缓存结果以减少 API 负载。
+    Uses static model list with optional dynamic updates from API.
+    Results are cached to reduce API load.
 
     Args:
-        request: FastAPI Request 用于访问 app.state
+        request: FastAPI Request for accessing app.state
 
     Returns:
-        ModelList 包含可用模型
+        ModelList containing available models
     """
     logger.info("Request to /v1/models")
 
-    auth_manager: KiroAuthManager = request.app.state.auth_manager
     model_cache: ModelInfoCache = request.app.state.model_cache
 
-    # 如果缓存为空或过期，尝试从 API 获取模型
+    # Trigger background refresh if cache is empty or stale
     if model_cache.is_empty() or model_cache.is_stale():
+        # Don't block - just trigger refresh in background
         try:
-            token = await auth_manager.get_access_token()
-            headers = get_kiro_headers(auth_manager, token)
-
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(
-                    f"{auth_manager.q_host}/ListAvailableModels",
-                    headers=headers,
-                    params={
-                        "origin": "AI_EDITOR",
-                        "profileArn": auth_manager.profile_arn or ""
-                    }
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    models_list = data.get("models", [])
-                    await model_cache.update(models_list)
-                    logger.info(f"Received {len(models_list)} models from API")
+            import asyncio
+            asyncio.create_task(model_cache.refresh())
         except Exception as e:
-            logger.warning(f"Failed to fetch models from API: {e}")
+            logger.warning(f"Failed to trigger model cache refresh: {e}")
 
-    # 返回静态模型列表
+    # Return static model list immediately
     openai_models = [
         OpenAIModel(
             id=model_id,
@@ -281,21 +269,21 @@ async def get_models(request: Request):
 @rate_limit_decorator()
 async def chat_completions(request: Request, request_data: ChatCompletionRequest):
     """
-    Chat completions 端点 - 兼容 OpenAI API。
+    Chat completions endpoint - OpenAI API compatible.
 
-    接受 OpenAI 格式的请求并转换为 Kiro API。
-    支持流式和非流式模式。
+    Accepts OpenAI format requests and converts to Kiro API.
+    Supports streaming and non-streaming modes.
 
     Args:
-        request: FastAPI Request 用于访问 app.state
-        request_data: OpenAI ChatCompletionRequest 格式的请求
+        request: FastAPI Request for accessing app.state
+        request_data: OpenAI ChatCompletionRequest format
 
     Returns:
-        StreamingResponse 用于流式模式
-        JSONResponse 用于非流式模式
+        StreamingResponse for streaming mode
+        JSONResponse for non-streaming mode
 
     Raises:
-        HTTPException: 验证错误或 API 错误时
+        HTTPException: On validation or API errors
     """
     logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream})")
 
@@ -316,21 +304,21 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
 @rate_limit_decorator()
 async def anthropic_messages(request: Request, request_data: AnthropicMessagesRequest):
     """
-    Anthropic Messages API 端点 - 兼容 Anthropic SDK。
+    Anthropic Messages API endpoint - Anthropic SDK compatible.
 
-    接受 Anthropic 格式的请求并转换为 Kiro API。
-    支持流式和非流式模式。
+    Accepts Anthropic format requests and converts to Kiro API.
+    Supports streaming and non-streaming modes.
 
     Args:
-        request: FastAPI Request 用于访问 app.state
-        request_data: Anthropic MessagesRequest 格式的请求
+        request: FastAPI Request for accessing app.state
+        request_data: Anthropic MessagesRequest format
 
     Returns:
-        StreamingResponse 用于流式模式
-        JSONResponse 用于非流式模式
+        StreamingResponse for streaming mode
+        JSONResponse for non-streaming mode
 
     Raises:
-        HTTPException: 验证错误或 API 错误时
+        HTTPException: On validation or API errors
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
 
@@ -343,12 +331,9 @@ async def anthropic_messages(request: Request, request_data: AnthropicMessagesRe
     )
 
 
-# --- 速率限制错误处理 ---
-# 注意：异常处理器需要在 FastAPI 应用上注册，而不是在路由器上
+# --- Rate limit error handler ---
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    """
-    处理速率限制错误。
-    """
+    """Handle rate limit errors."""
     return JSONResponse(
         status_code=429,
         content={

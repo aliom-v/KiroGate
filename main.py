@@ -267,7 +267,6 @@ app.add_middleware(metrics_middleware)
 
 # 设置速率限制器
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # 注册验证错误处理器

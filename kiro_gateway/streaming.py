@@ -18,18 +18,18 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 """
-流式响应处理逻辑，将 Kiro 流转换为 OpenAI/Anthropic 格式。
+Streaming response processing logic, converts Kiro stream to OpenAI/Anthropic format.
 
-Содержит генераторы для:
-- Преобразования AWS SSE в OpenAI SSE
-- Формирования streaming chunks
-- Обработки tool calls в потоке
+Contains generators for:
+- Converting AWS SSE to OpenAI SSE
+- Forming streaming chunks
+- Processing tool calls in stream
 """
 
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING, AsyncGenerator, Callable, Awaitable, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Callable, Awaitable, Optional, Dict, Any, List
 
 import httpx
 from fastapi import HTTPException
@@ -37,14 +37,13 @@ from loguru import logger
 
 from kiro_gateway.parsers import AwsEventStreamParser, parse_bracket_tool_calls, deduplicate_tool_calls
 from kiro_gateway.utils import generate_completion_id
-from kiro_gateway.config import FIRST_TOKEN_TIMEOUT, FIRST_TOKEN_MAX_RETRIES
+from kiro_gateway.config import settings
 from kiro_gateway.tokenizer import count_tokens, count_message_tokens, count_tools_tokens
 
 if TYPE_CHECKING:
     from kiro_gateway.auth import KiroAuthManager
     from kiro_gateway.cache import ModelInfoCache
 
-# Импортируем debug_logger для логирования
 try:
     from kiro_gateway.debug_logger import debug_logger
 except ImportError:
@@ -52,8 +51,119 @@ except ImportError:
 
 
 class FirstTokenTimeoutError(Exception):
-    """Исключение при таймауте ожидания первого токена."""
+    """Exception raised when first token timeout occurs."""
     pass
+
+
+def _calculate_usage_tokens(
+    full_content: str,
+    context_usage_percentage: Optional[float],
+    model_cache: "ModelInfoCache",
+    model: str,
+    request_messages: Optional[list],
+    request_tools: Optional[list]
+) -> Dict[str, Any]:
+    """
+    Calculate token usage from response.
+
+    Args:
+        full_content: Full response content
+        context_usage_percentage: Context usage percentage from API
+        model_cache: Model cache for token limits
+        model: Model name
+        request_messages: Request messages for fallback counting
+        request_tools: Request tools for fallback counting
+
+    Returns:
+        Dict with prompt_tokens, completion_tokens, total_tokens and source info
+    """
+    completion_tokens = count_tokens(full_content)
+
+    total_tokens_from_api = 0
+    if context_usage_percentage is not None and context_usage_percentage > 0:
+        max_input_tokens = model_cache.get_max_input_tokens(model)
+        total_tokens_from_api = int((context_usage_percentage / 100) * max_input_tokens)
+
+    if total_tokens_from_api > 0:
+        prompt_tokens = max(0, total_tokens_from_api - completion_tokens)
+        total_tokens = total_tokens_from_api
+        prompt_source = "subtraction"
+        total_source = "API Kiro"
+    else:
+        prompt_tokens = 0
+        if request_messages:
+            prompt_tokens += count_message_tokens(request_messages, apply_claude_correction=False)
+        if request_tools:
+            prompt_tokens += count_tools_tokens(request_tools, apply_claude_correction=False)
+        total_tokens = prompt_tokens + completion_tokens
+        prompt_source = "tiktoken"
+        total_source = "tiktoken"
+
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "prompt_source": prompt_source,
+        "total_source": total_source
+    }
+
+
+def _format_tool_calls_for_streaming(tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Format tool calls for streaming response with required index field.
+
+    Args:
+        tool_calls: List of tool calls
+
+    Returns:
+        List of indexed tool calls for streaming
+    """
+    indexed_tool_calls = []
+    for idx, tc in enumerate(tool_calls):
+        func = tc.get("function") or {}
+        tool_name = func.get("name") or ""
+        tool_args = func.get("arguments") or "{}"
+
+        logger.debug(f"Tool call [{idx}] '{tool_name}': id={tc.get('id')}, args_length={len(tool_args)}")
+
+        indexed_tc = {
+            "index": idx,
+            "id": tc.get("id"),
+            "type": tc.get("type", "function"),
+            "function": {
+                "name": tool_name,
+                "arguments": tool_args
+            }
+        }
+        indexed_tool_calls.append(indexed_tc)
+
+    return indexed_tool_calls
+
+
+def _format_tool_calls_for_non_streaming(tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Format tool calls for non-streaming response (without index field).
+
+    Args:
+        tool_calls: List of tool calls
+
+    Returns:
+        List of cleaned tool calls for non-streaming
+    """
+    cleaned_tool_calls = []
+    for tc in tool_calls:
+        func = tc.get("function") or {}
+        cleaned_tc = {
+            "id": tc.get("id"),
+            "type": tc.get("type", "function"),
+            "function": {
+                "name": func.get("name", ""),
+                "arguments": func.get("arguments", "{}")
+            }
+        }
+        cleaned_tool_calls.append(cleaned_tc)
+
+    return cleaned_tool_calls
 
 
 async def stream_kiro_to_openai_internal(
@@ -62,57 +172,48 @@ async def stream_kiro_to_openai_internal(
     model: str,
     model_cache: "ModelInfoCache",
     auth_manager: "KiroAuthManager",
-    first_token_timeout: float = FIRST_TOKEN_TIMEOUT,
+    first_token_timeout: float = settings.first_token_timeout,
     request_messages: Optional[list] = None,
     request_tools: Optional[list] = None
 ) -> AsyncGenerator[str, None]:
     """
-    Внутренний генератор для преобразования потока Kiro в OpenAI формат.
-    
-    Парсит AWS SSE stream и конвертирует события в OpenAI chat.completion.chunk.
-    Поддерживает tool calls и вычисление usage.
-    
-    ВАЖНО: Эта функция выбрасывает FirstTokenTimeoutError если первый токен
-    не получен в течение first_token_timeout секунд.
-    
+    Internal generator for converting Kiro stream to OpenAI format.
+
+    Parses AWS SSE stream and converts events to OpenAI chat.completion.chunk.
+    Supports tool calls and usage calculation.
+
+    IMPORTANT: This function raises FirstTokenTimeoutError if first token
+    is not received within first_token_timeout seconds.
+
     Args:
-        client: HTTP клиент (для управления соединением)
-        response: HTTP ответ с потоком данных
-        model: Имя модели для включения в ответ
-        model_cache: Кэш моделей для получения лимитов токенов
-        auth_manager: Менеджер аутентификации
-        first_token_timeout: Таймаут ожидания первого токена (секунды)
-        request_messages: Исходные сообщения запроса (для fallback подсчёта токенов)
-        request_tools: Исходные инструменты запроса (для fallback подсчёта токенов)
-    
+        client: HTTP client (for connection management)
+        response: HTTP response with data stream
+        model: Model name to include in response
+        model_cache: Model cache for token limits
+        auth_manager: Authentication manager
+        first_token_timeout: First token timeout (seconds)
+        request_messages: Original request messages (for fallback token counting)
+        request_tools: Original request tools (for fallback token counting)
+
     Yields:
-        Строки в формате SSE: "data: {...}\\n\\n" или "data: [DONE]\\n\\n"
-    
+        Strings in SSE format: "data: {...}\\n\\n" or "data: [DONE]\\n\\n"
+
     Raises:
-        FirstTokenTimeoutError: Если первый токен не получен в течение таймаута
-    
-    Example:
-        >>> async for chunk in stream_kiro_to_openai_internal(client, response, "claude-sonnet-4", cache, auth):
-        ...     print(chunk)
-        data: {"id":"chatcmpl-...","object":"chat.completion.chunk",...}
-        
-        data: [DONE]
+        FirstTokenTimeoutError: If first token not received within timeout
     """
     completion_id = generate_completion_id()
     created_time = int(time.time())
     first_chunk = True
-    first_token_received = False
-    
+
     parser = AwsEventStreamParser()
     metering_data = None
     context_usage_percentage = None
-    full_content = ""
-    
+    content_parts: list[str] = []  # 使用 list 替代字符串拼接，提升性能
+
     try:
-        # Создаём итератор для чтения байтов
         byte_iterator = response.aiter_bytes()
-        
-        # Ожидаем первый chunk с таймаутом
+
+        # Wait for first chunk with timeout
         try:
             first_byte_chunk = await asyncio.wait_for(
                 byte_iterator.__anext__(),
@@ -122,27 +223,25 @@ async def stream_kiro_to_openai_internal(
             logger.warning(f"First token timeout after {first_token_timeout}s")
             raise FirstTokenTimeoutError(f"No response within {first_token_timeout} seconds")
         except StopAsyncIteration:
-            # Пустой ответ - это нормально, просто завершаем
             logger.debug("Empty response from Kiro API")
             yield "data: [DONE]\n\n"
             return
-        
-        # Обрабатываем первый chunk
+
+        # Process first chunk
         if debug_logger:
             debug_logger.log_raw_chunk(first_byte_chunk)
-        
+
         events = parser.feed(first_byte_chunk)
         for event in events:
             if event["type"] == "content":
-                first_token_received = True
                 content = event["data"]
-                full_content += content
-                
+                content_parts.append(content)
+
                 delta = {"content": content}
                 if first_chunk:
                     delta["role"] = "assistant"
                     first_chunk = False
-                
+
                 openai_chunk = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
@@ -150,40 +249,37 @@ async def stream_kiro_to_openai_internal(
                     "model": model,
                     "choices": [{"index": 0, "delta": delta, "finish_reason": None}]
                 }
-                
+
                 chunk_text = f"data: {json.dumps(openai_chunk, ensure_ascii=False)}\n\n"
-                
+
                 if debug_logger:
                     debug_logger.log_modified_chunk(chunk_text.encode('utf-8'))
-                
+
                 yield chunk_text
-            
+
             elif event["type"] == "usage":
                 metering_data = event["data"]
-            
+
             elif event["type"] == "context_usage":
                 context_usage_percentage = event["data"]
-        
-        # Продолжаем читать остальные chunks (уже без таймаута на первый токен)
+
+        # Continue reading remaining chunks
         async for chunk in byte_iterator:
-            # Логируем сырой chunk
             if debug_logger:
                 debug_logger.log_raw_chunk(chunk)
-            
+
             events = parser.feed(chunk)
-            
+
             for event in events:
                 if event["type"] == "content":
                     content = event["data"]
-                    full_content += content
-                    
-                    # Формируем delta
+                    content_parts.append(content)
+
                     delta = {"content": content}
                     if first_chunk:
                         delta["role"] = "assistant"
                         first_chunk = False
-                    
-                    # Формируем OpenAI chunk
+
                     openai_chunk = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
@@ -191,88 +287,41 @@ async def stream_kiro_to_openai_internal(
                         "model": model,
                         "choices": [{"index": 0, "delta": delta, "finish_reason": None}]
                     }
-                    
+
                     chunk_text = f"data: {json.dumps(openai_chunk, ensure_ascii=False)}\n\n"
-                    
-                    # Логируем модифицированный chunk
+
                     if debug_logger:
                         debug_logger.log_modified_chunk(chunk_text.encode('utf-8'))
-                    
+
                     yield chunk_text
-                
+
                 elif event["type"] == "usage":
                     metering_data = event["data"]
-                
+
                 elif event["type"] == "context_usage":
                     context_usage_percentage = event["data"]
-        
-        # Проверяем bracket-style tool calls в полном контенте
+
+        # 合并 content 部分（比字符串拼接更高效）
+        full_content = ''.join(content_parts)
+
+        # Check bracket-style tool calls in full content
         bracket_tool_calls = parse_bracket_tool_calls(full_content)
         all_tool_calls = parser.get_tool_calls() + bracket_tool_calls
         all_tool_calls = deduplicate_tool_calls(all_tool_calls)
-        
-        # Определяем finish_reason
+
         finish_reason = "tool_calls" if all_tool_calls else "stop"
-        
-        # Подсчитываем completion_tokens (output) с помощью tiktoken
-        completion_tokens = count_tokens(full_content)
-        
-        # Вычисляем total_tokens на основе context_usage_percentage от API Kiro
-        # context_usage показывает ОБЩИЙ процент использования контекста (input + output)
-        total_tokens_from_api = 0
-        if context_usage_percentage is not None and context_usage_percentage > 0:
-            max_input_tokens = model_cache.get_max_input_tokens(model)
-            total_tokens_from_api = int((context_usage_percentage / 100) * max_input_tokens)
-        
-        # Определяем источник данных и вычисляем токены
-        if total_tokens_from_api > 0:
-            # Используем данные от API Kiro
-            # prompt_tokens (input) = total_tokens - completion_tokens
-            prompt_tokens = max(0, total_tokens_from_api - completion_tokens)
-            total_tokens = total_tokens_from_api
-            prompt_source = "subtraction"
-            total_source = "API Kiro"
-        else:
-            # Fallback: API Kiro не вернул context_usage, используем tiktoken
-            # Подсчитываем prompt_tokens из исходных сообщений
-            # ВАЖНО: Не применяем коэффициент коррекции для prompt_tokens,
-            # так как он был калиброван для completion_tokens
-            prompt_tokens = 0
-            if request_messages:
-                prompt_tokens += count_message_tokens(request_messages, apply_claude_correction=False)
-            if request_tools:
-                prompt_tokens += count_tools_tokens(request_tools, apply_claude_correction=False)
-            total_tokens = prompt_tokens + completion_tokens
-            prompt_source = "tiktoken"
-            total_source = "tiktoken"
-        
-        # Отправляем tool calls если есть
+
+        # Calculate usage tokens using helper function
+        usage_info = _calculate_usage_tokens(
+            full_content, context_usage_percentage, model_cache, model,
+            request_messages, request_tools
+        )
+
+        # Send tool calls if any
         if all_tool_calls:
             logger.debug(f"Processing {len(all_tool_calls)} tool calls for streaming response")
-            
-            # Добавляем обязательное поле index к каждому tool_call
-            # согласно спецификации OpenAI API для streaming
-            indexed_tool_calls = []
-            for idx, tc in enumerate(all_tool_calls):
-                # Извлекаем function с защитой от None
-                func = tc.get("function") or {}
-                # Используем "or" для защиты от явного None в значениях
-                tool_name = func.get("name") or ""
-                tool_args = func.get("arguments") or "{}"
-                
-                logger.debug(f"Tool call [{idx}] '{tool_name}': id={tc.get('id')}, args_length={len(tool_args)}")
-                
-                indexed_tc = {
-                    "index": idx,
-                    "id": tc.get("id"),
-                    "type": tc.get("type", "function"),
-                    "function": {
-                        "name": tool_name,
-                        "arguments": tool_args
-                    }
-                }
-                indexed_tool_calls.append(indexed_tc)
-            
+            indexed_tool_calls = _format_tool_calls_for_streaming(all_tool_calls)
+
             tool_calls_chunk = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
@@ -285,8 +334,8 @@ async def stream_kiro_to_openai_internal(
                 }]
             }
             yield f"data: {json.dumps(tool_calls_chunk, ensure_ascii=False)}\n\n"
-        
-        # Финальный чанк с usage
+
+        # Final chunk with usage
         final_chunk = {
             "id": completion_id,
             "object": "chat.completion.chunk",
@@ -294,28 +343,26 @@ async def stream_kiro_to_openai_internal(
             "model": model,
             "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
             "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
+                "prompt_tokens": usage_info["prompt_tokens"],
+                "completion_tokens": usage_info["completion_tokens"],
+                "total_tokens": usage_info["total_tokens"],
             }
         }
-        
+
         if metering_data:
             final_chunk["usage"]["credits_used"] = metering_data
-        
-        # Логируем финальные значения токенов которые отправляются клиенту
+
         logger.debug(
             f"[Usage] {model}: "
-            f"prompt_tokens={prompt_tokens} ({prompt_source}), "
-            f"completion_tokens={completion_tokens} (tiktoken), "
-            f"total_tokens={total_tokens} ({total_source})"
+            f"prompt_tokens={usage_info['prompt_tokens']} ({usage_info['prompt_source']}), "
+            f"completion_tokens={usage_info['completion_tokens']} (tiktoken), "
+            f"total_tokens={usage_info['total_tokens']} ({usage_info['total_source']})"
         )
-        
+
         yield f"data: {json.dumps(final_chunk, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
-        
+
     except FirstTokenTimeoutError:
-        # Пробрасываем таймаут наверх для retry
         raise
     except Exception as e:
         logger.error(f"Error during streaming: {e}", exc_info=True)
@@ -365,8 +412,8 @@ async def stream_with_first_token_retry(
     model: str,
     model_cache: "ModelInfoCache",
     auth_manager: "KiroAuthManager",
-    max_retries: int = FIRST_TOKEN_MAX_RETRIES,
-    first_token_timeout: float = FIRST_TOKEN_TIMEOUT,
+    max_retries: int = settings.first_token_max_retries,
+    first_token_timeout: float = settings.first_token_timeout,
     request_messages: Optional[list] = None,
     request_tools: Optional[list] = None
 ) -> AsyncGenerator[str, None]:
@@ -507,11 +554,11 @@ async def collect_stream_response(
     Returns:
         Словарь с полным ответом в формате OpenAI chat.completion
     """
-    full_content = ""
+    content_parts: list[str] = []  # 使用 list 替代字符串拼接，提升性能
     final_usage = None
     tool_calls = []
     completion_id = generate_completion_id()
-    
+
     async for chunk_str in stream_kiro_to_openai(
         client,
         response,
@@ -534,7 +581,7 @@ async def collect_stream_response(
             # Извлекаем данные из chunk
             delta = chunk_data.get("choices", [{}])[0].get("delta", {})
             if "content" in delta:
-                full_content += delta["content"]
+                content_parts.append(delta["content"])
             if "tool_calls" in delta:
                 tool_calls.extend(delta["tool_calls"])
             
@@ -544,7 +591,10 @@ async def collect_stream_response(
                 
         except (json.JSONDecodeError, IndexError):
             continue
-    
+
+    # 合并 content 部分（比字符串拼接更高效）
+    full_content = ''.join(content_parts)
+
     # Формируем финальный ответ
     message = {"role": "assistant", "content": full_content}
     if tool_calls:
@@ -634,7 +684,7 @@ async def stream_kiro_to_anthropic(
     parser = AwsEventStreamParser()
     metering_data = None
     context_usage_percentage = None
-    full_content = ""
+    content_parts: list[str] = []  # 使用 list 替代字符串拼接，提升性能
     content_block_index = 0
     text_block_started = False
     tool_blocks_started = {}  # tool_id -> index
@@ -665,7 +715,7 @@ async def stream_kiro_to_anthropic(
             for event in events:
                 if event["type"] == "content":
                     content = event["data"]
-                    full_content += content
+                    content_parts.append(content)
 
                     # Если text block ещё не начат, начинаем его
                     if not text_block_started:
@@ -702,6 +752,9 @@ async def stream_kiro_to_anthropic(
             }
             yield f"event: content_block_stop\ndata: {json.dumps(block_stop, ensure_ascii=False)}\n\n"
             content_block_index += 1
+
+        # 合并 content 部分（比字符串拼接更高效）
+        full_content = ''.join(content_parts)
 
         # Обрабатываем tool calls
         bracket_tool_calls = parse_bracket_tool_calls(full_content)
@@ -757,21 +810,13 @@ async def stream_kiro_to_anthropic(
         # Определяем stop_reason
         stop_reason = "tool_use" if all_tool_calls else "end_turn"
 
-        # Подсчитываем токены
-        completion_tokens = count_tokens(full_content)
-        total_tokens_from_api = 0
-        if context_usage_percentage is not None and context_usage_percentage > 0:
-            max_input_tokens = model_cache.get_max_input_tokens(model)
-            total_tokens_from_api = int((context_usage_percentage / 100) * max_input_tokens)
-
-        if total_tokens_from_api > 0:
-            input_tokens = max(0, total_tokens_from_api - completion_tokens)
-        else:
-            input_tokens = 0
-            if request_messages:
-                input_tokens += count_message_tokens(request_messages, apply_claude_correction=False)
-            if request_tools:
-                input_tokens += count_tools_tokens(request_tools, apply_claude_correction=False)
+        # 使用统一的 token 计算函数（消除重复代码）
+        usage_info = _calculate_usage_tokens(
+            full_content, context_usage_percentage, model_cache, model,
+            request_messages, request_tools
+        )
+        input_tokens = usage_info["prompt_tokens"]
+        completion_tokens = usage_info["completion_tokens"]
 
         # Отправляем message_delta
         message_delta = {
@@ -839,7 +884,7 @@ async def collect_anthropic_response(
     parser = AwsEventStreamParser()
     metering_data = None
     context_usage_percentage = None
-    full_content = ""
+    content_parts: list[str] = []  # 使用 list 替代字符串拼接，提升性能
 
     try:
         async for chunk in response.aiter_bytes():
@@ -850,7 +895,7 @@ async def collect_anthropic_response(
 
             for event in events:
                 if event["type"] == "content":
-                    full_content += event["data"]
+                    content_parts.append(event["data"])
                 elif event["type"] == "usage":
                     metering_data = event["data"]
                 elif event["type"] == "context_usage":
@@ -858,6 +903,9 @@ async def collect_anthropic_response(
 
     finally:
         await response.aclose()
+
+    # 合并 content 部分（比字符串拼接更高效）
+    full_content = ''.join(content_parts)
 
     # Обрабатываем tool calls
     bracket_tool_calls = parse_bracket_tool_calls(full_content)
@@ -896,21 +944,13 @@ async def collect_anthropic_response(
     # Определяем stop_reason
     stop_reason = "tool_use" if all_tool_calls else "end_turn"
 
-    # Подсчитываем токены
-    completion_tokens = count_tokens(full_content)
-    total_tokens_from_api = 0
-    if context_usage_percentage is not None and context_usage_percentage > 0:
-        max_input_tokens = model_cache.get_max_input_tokens(model)
-        total_tokens_from_api = int((context_usage_percentage / 100) * max_input_tokens)
-
-    if total_tokens_from_api > 0:
-        input_tokens = max(0, total_tokens_from_api - completion_tokens)
-    else:
-        input_tokens = 0
-        if request_messages:
-            input_tokens += count_message_tokens(request_messages, apply_claude_correction=False)
-        if request_tools:
-            input_tokens += count_tools_tokens(request_tools, apply_claude_correction=False)
+    # 使用统一的 token 计算函数（消除重复代码）
+    usage_info = _calculate_usage_tokens(
+        full_content, context_usage_percentage, model_cache, model,
+        request_messages, request_tools
+    )
+    input_tokens = usage_info["prompt_tokens"]
+    completion_tokens = usage_info["completion_tokens"]
 
     logger.debug(
         f"[Anthropic Usage] {model}: input_tokens={input_tokens}, output_tokens={completion_tokens}"

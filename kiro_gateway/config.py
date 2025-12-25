@@ -194,16 +194,17 @@ class Settings(BaseSettings):
         return v
 
 
-# 创建全局设置实例
+# Global settings instance
 settings = Settings()
 
-# 处理 KIRO_CREDS_FILE 的 Windows 路径问题
+# Handle KIRO_CREDS_FILE Windows path issue
 _raw_creds_file = _get_raw_env_value("KIRO_CREDS_FILE") or settings.kiro_creds_file
 if _raw_creds_file:
     settings.kiro_creds_file = str(Path(_raw_creds_file))
 
 # ==================================================================================================
-# 向后兼容的导出（保持现有代码正常工作）
+# Backward-compatible exports (DEPRECATED - only kept for tests and external compatibility)
+# WARNING: These constants are deprecated. Use `settings.xxx` directly in new code.
 # ==================================================================================================
 
 PROXY_API_KEY: str = settings.proxy_api_key
@@ -225,7 +226,7 @@ DEBUG_DIR: str = settings.debug_dir
 RATE_LIMIT_PER_MINUTE: int = settings.rate_limit_per_minute
 
 # ==================================================================================================
-# Kiro API URL 模板
+# Kiro API URL Templates
 # ==================================================================================================
 
 KIRO_REFRESH_URL_TEMPLATE: str = "https://prod.{region}.auth.desktop.kiro.dev/refreshToken"
@@ -233,35 +234,35 @@ KIRO_API_HOST_TEMPLATE: str = "https://codewhisperer.{region}.amazonaws.com"
 KIRO_Q_HOST_TEMPLATE: str = "https://q.{region}.amazonaws.com"
 
 # ==================================================================================================
-# 模型映射
+# Model Mapping
 # ==================================================================================================
 
-# 外部模型名称（OpenAI 兼容）-> Kiro 内部 ID
+# External model names (OpenAI compatible) -> Kiro internal ID
 MODEL_MAPPING: Dict[str, str] = {
-    # Claude Opus 4.5 - 顶级模型
+    # Claude Opus 4.5 - Top tier model
     "claude-opus-4-5": "claude-opus-4.5",
     "claude-opus-4-5-20251101": "claude-opus-4.5",
 
-    # Claude Haiku 4.5 - 快速模型
+    # Claude Haiku 4.5 - Fast model
     "claude-haiku-4-5": "claude-haiku-4.5",
     "claude-haiku-4.5": "claude-haiku-4.5",
 
-    # Claude Sonnet 4.5 - 增强模型
+    # Claude Sonnet 4.5 - Enhanced model
     "claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
     "claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0",
 
-    # Claude Sonnet 4 - 平衡模型
+    # Claude Sonnet 4 - Balanced model
     "claude-sonnet-4": "CLAUDE_SONNET_4_20250514_V1_0",
     "claude-sonnet-4-20250514": "CLAUDE_SONNET_4_20250514_V1_0",
 
-    # Claude 3.7 Sonnet - 旧版模型
+    # Claude 3.7 Sonnet - Legacy model
     "claude-3-7-sonnet-20250219": "CLAUDE_3_7_SONNET_20250219_V1_0",
 
-    # 便捷别名
+    # Convenience aliases
     "auto": "claude-sonnet-4.5",
 }
 
-# /v1/models 端点返回的可用模型列表
+# Available models list for /v1/models endpoint
 AVAILABLE_MODELS: List[str] = [
     "claude-opus-4-5",
     "claude-opus-4-5-20251101",
@@ -274,37 +275,37 @@ AVAILABLE_MODELS: List[str] = [
 ]
 
 # ==================================================================================================
-# 版本信息
+# Version Info
 # ==================================================================================================
 
 APP_VERSION: str = "2.1.0"
 APP_TITLE: str = "KiroGate"
-APP_DESCRIPTION: str = "OpenAI & Anthropic 兼容的 Kiro API 网关。基于 kiro-openai-gateway by Jwadow"
+APP_DESCRIPTION: str = "OpenAI & Anthropic compatible Kiro API gateway. Based on kiro-openai-gateway by Jwadow"
 
 
 def get_kiro_refresh_url(region: str) -> str:
-    """返回指定区域的 token 刷新 URL。"""
+    """Return token refresh URL for specified region."""
     return KIRO_REFRESH_URL_TEMPLATE.format(region=region)
 
 
 def get_kiro_api_host(region: str) -> str:
-    """返回指定区域的 API 主机。"""
+    """Return API host for specified region."""
     return KIRO_API_HOST_TEMPLATE.format(region=region)
 
 
 def get_kiro_q_host(region: str) -> str:
-    """返回指定区域的 Q API 主机。"""
+    """Return Q API host for specified region."""
     return KIRO_Q_HOST_TEMPLATE.format(region=region)
 
 
 def get_internal_model_id(external_model: str) -> str:
     """
-    将外部模型名称转换为 Kiro 内部 ID。
+    Convert external model name to Kiro internal ID.
 
     Args:
-        external_model: 外部模型名称（如 "claude-sonnet-4-5"）
+        external_model: External model name (e.g. "claude-sonnet-4-5")
 
     Returns:
-        Kiro API 的内部模型 ID
+        Kiro API internal model ID
     """
     return MODEL_MAPPING.get(external_model, external_model)

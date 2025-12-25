@@ -18,9 +18,9 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 """
-模型元数据缓存。
+Model metadata cache.
 
-线程安全的存储信息，支持 TTL、lazy loading 和后台刷新。
+Thread-safe storage with TTL, lazy loading and background refresh.
 """
 
 import asyncio
@@ -31,48 +31,49 @@ import httpx
 from loguru import logger
 
 from kiro_gateway.config import MODEL_CACHE_TTL, DEFAULT_MAX_INPUT_TOKENS
+from kiro_gateway.http_client import global_http_client_manager
 
 
 class ModelInfoCache:
     """
-    线程安全的模型元数据缓存。
+    Thread-safe model metadata cache.
 
-    使用 Lazy Loading 填充 - 仅在首次访问或缓存过期时加载数据。
-    支持后台自动刷新机制。
+    Uses lazy loading - data is loaded only on first access or when cache expires.
+    Supports background auto-refresh mechanism.
     """
 
     def __init__(self, cache_ttl: int = MODEL_CACHE_TTL):
         """
-        初始化模型缓存。
+        Initialize model cache.
 
         Args:
-            cache_ttl: 缓存 TTL（秒）（默认来自配置）
+            cache_ttl: Cache TTL in seconds (default from config)
         """
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
         self._last_update: Optional[float] = None
         self._cache_ttl = cache_ttl
         self._refresh_task: Optional[asyncio.Task] = None
-        self._auth_manager = None  # 将由应用设置
+        self._auth_manager = None
 
     def set_auth_manager(self, auth_manager) -> None:
         """
-        设置认证管理器（用于后台刷新）。
+        Set authentication manager (for background refresh).
 
         Args:
-            auth_manager: 认证管理器实例
+            auth_manager: Authentication manager instance
         """
         self._auth_manager = auth_manager
 
     async def update(self, models_data: List[Dict[str, Any]]) -> None:
         """
-        更新模型缓存。
+        Update model cache.
 
-        线程安全地替换缓存内容为新数据。
+        Thread-safely replaces cache content with new data.
 
         Args:
-            models_data: 模型信息字典列表
-                      每个字典应包含 "modelId" 键
+            models_data: List of model info dictionaries.
+                        Each dict should contain "modelId" key.
         """
         async with self._lock:
             logger.info(f"Updating model cache. Found {len(models_data)} models.")
@@ -81,10 +82,10 @@ class ModelInfoCache:
 
     async def refresh(self) -> bool:
         """
-        从 API 刷新缓存。
+        Refresh cache from API using global connection pool.
 
         Returns:
-            True 如果刷新成功，False 否则
+            True if refresh succeeded, False otherwise
         """
         if not self._auth_manager:
             logger.warning("No auth manager set, cannot refresh cache")
@@ -95,25 +96,27 @@ class ModelInfoCache:
             from kiro_gateway.utils import get_kiro_headers
             headers = get_kiro_headers(self._auth_manager, token)
 
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(
-                    f"{self._auth_manager.q_host}/ListAvailableModels",
-                    headers=headers,
-                    params={
-                        "origin": "AI_EDITOR",
-                        "profileArn": self._auth_manager.profile_arn or ""
-                    }
-                )
+            # Use global connection pool instead of creating new client
+            client = await global_http_client_manager.get_client()
+            response = await client.get(
+                f"{self._auth_manager.q_host}/ListAvailableModels",
+                headers=headers,
+                params={
+                    "origin": "AI_EDITOR",
+                    "profileArn": self._auth_manager.profile_arn or ""
+                },
+                timeout=30.0
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    models_list = data.get("models", [])
-                    await self.update(models_list)
-                    logger.info(f"Successfully refreshed model cache with {len(models_list)} models")
-                    return True
-                else:
-                    logger.error(f"Failed to refresh models: HTTP {response.status_code}")
-                    return False
+            if response.status_code == 200:
+                data = response.json()
+                models_list = data.get("models", [])
+                await self.update(models_list)
+                logger.info(f"Successfully refreshed model cache with {len(models_list)} models")
+                return True
+            else:
+                logger.error(f"Failed to refresh models: HTTP {response.status_code}")
+                return False
 
         except Exception as e:
             logger.error(f"Error refreshing model cache: {e}")
@@ -121,9 +124,9 @@ class ModelInfoCache:
 
     async def start_background_refresh(self) -> None:
         """
-        启动后台刷新任务。
+        Start background refresh task.
 
-        创建定期刷新缓存的后台任务。
+        Creates a background task that periodically refreshes the cache.
         """
         if self._refresh_task and not self._refresh_task.done():
             logger.warning("Background refresh task is already running")
@@ -133,9 +136,7 @@ class ModelInfoCache:
         logger.info("Started background model cache refresh task")
 
     async def stop_background_refresh(self) -> None:
-        """
-        停止后台刷新任务。
-        """
+        """Stop background refresh task."""
         if self._refresh_task and not self._refresh_task.done():
             self._refresh_task.cancel()
             try:
@@ -147,9 +148,9 @@ class ModelInfoCache:
 
     async def _background_refresh_loop(self) -> None:
         """
-        后台刷新循环。
+        Background refresh loop.
 
-        定期刷新缓存，刷新间隔为 TTL 的一半。
+        Periodically refreshes cache at half the TTL interval.
         """
         refresh_interval = self._cache_ttl / 2
         logger.info(f"Background refresh will run every {refresh_interval} seconds")
@@ -167,25 +168,25 @@ class ModelInfoCache:
 
     def get(self, model_id: str) -> Optional[Dict[str, Any]]:
         """
-        获取模型信息。
+        Get model info.
 
         Args:
-            model_id: 模型 ID
+            model_id: Model ID
 
         Returns:
-            模型信息字典，如果未找到则返回 None
+            Model info dict, or None if not found
         """
         return self._cache.get(model_id)
 
     def get_max_input_tokens(self, model_id: str) -> int:
         """
-        获取模型的 maxInputTokens。
+        Get model's maxInputTokens.
 
         Args:
-            model_id: 模型 ID
+            model_id: Model ID
 
         Returns:
-            最大输入 token 数或 DEFAULT_MAX_INPUT_TOKENS
+            Max input tokens or DEFAULT_MAX_INPUT_TOKENS
         """
         model = self._cache.get(model_id)
         if model and model.get("tokenLimits"):
@@ -194,20 +195,20 @@ class ModelInfoCache:
 
     def is_empty(self) -> bool:
         """
-        检查缓存是否为空。
+        Check if cache is empty.
 
         Returns:
-            True 如果缓存为空
+            True if cache is empty
         """
         return not self._cache
 
     def is_stale(self) -> bool:
         """
-        检查缓存是否过期。
+        Check if cache is stale.
 
         Returns:
-            True 如果缓存过期（超过 cache_ttl 秒）
-            或缓存从未更新
+            True if cache is stale (older than cache_ttl seconds)
+            or cache was never updated
         """
         if not self._last_update:
             return True
@@ -215,24 +216,24 @@ class ModelInfoCache:
 
     def get_all_model_ids(self) -> List[str]:
         """
-        返回缓存中所有模型 ID 列表。
+        Return all model IDs in cache.
 
         Returns:
-            模型 ID 列表
+            List of model IDs
         """
         return list(self._cache.keys())
 
     @property
     def size(self) -> int:
-        """缓存中的模型数量。"""
+        """Number of models in cache."""
         return len(self._cache)
 
     @property
     def last_update_time(self) -> Optional[float]:
-        """最后更新时间戳（秒）或 None。"""
+        """Last update timestamp (seconds) or None."""
         return self._last_update
 
     @property
     def is_background_refresh_running(self) -> bool:
-        """检查后台刷新是否正在运行。"""
+        """Check if background refresh is running."""
         return self._refresh_task is not None and not self._refresh_task.done()

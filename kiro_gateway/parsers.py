@@ -236,18 +236,23 @@ class AwsEventStreamParser:
         ...     if event["type"] == "content":
         ...         print(event["data"])
     """
-    
-    # Паттерны для поиска JSON событий
-    EVENT_PATTERNS = [
-        ('{"content":', 'content'),
-        ('{"name":', 'tool_start'),
-        ('{"input":', 'tool_input'),
-        ('{"stop":', 'tool_stop'),
-        ('{"followupPrompt":', 'followup'),
-        ('{"usage":', 'usage'),
-        ('{"contextUsagePercentage":', 'context_usage'),
-    ]
-    
+
+    # 事件类型映射（pattern -> event_type）
+    _PATTERN_TYPE_MAP = {
+        '{"content":': 'content',
+        '{"name":': 'tool_start',
+        '{"input":': 'tool_input',
+        '{"stop":': 'tool_stop',
+        '{"followupPrompt":': 'followup',
+        '{"usage":': 'usage',
+        '{"contextUsagePercentage":': 'context_usage',
+    }
+
+    # 预编译的正则表达式（性能优化：单次匹配所有模式）
+    _PATTERN_REGEX = re.compile(
+        r'\{"(?:content|name|input|stop|followupPrompt|usage|contextUsagePercentage)":'
+    )
+
     def __init__(self):
         """Инициализирует парсер."""
         self.buffer = ""
@@ -271,21 +276,27 @@ class AwsEventStreamParser:
             return []
         
         events = []
-        
+
         while True:
-            # Находим ближайший паттерн
-            earliest_pos = -1
-            earliest_type = None
-            
-            for pattern, event_type in self.EVENT_PATTERNS:
-                pos = self.buffer.find(pattern)
-                if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
-                    earliest_pos = pos
-                    earliest_type = event_type
-            
-            if earliest_pos == -1:
+            # 使用预编译正则快速定位下一个事件（性能优化）
+            match = self._PATTERN_REGEX.search(self.buffer)
+            if not match:
                 break
-            
+
+            earliest_pos = match.start()
+            # 从匹配位置提取完整的 pattern 前缀来确定事件类型
+            # 找到 ":" 后的位置来截取完整的 pattern
+            colon_pos = self.buffer.find(':', earliest_pos)
+            if colon_pos == -1:
+                break
+            pattern_prefix = self.buffer[earliest_pos:colon_pos + 1]
+            earliest_type = self._PATTERN_TYPE_MAP.get(pattern_prefix)
+
+            if earliest_type is None:
+                # 未知模式，跳过这个位置
+                self.buffer = self.buffer[earliest_pos + 1:]
+                continue
+
             # Ищем конец JSON
             json_end = find_matching_brace(self.buffer, earliest_pos)
             if json_end == -1:

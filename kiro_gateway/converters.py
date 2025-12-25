@@ -392,6 +392,40 @@ def _extract_tool_uses(msg: ChatMessage) -> List[Dict[str, Any]]:
     return tool_uses
 
 
+def _extract_system_and_tool_docs(
+    messages: List[ChatMessage],
+    tools: Optional[List[Tool]]
+) -> Tuple[str, List[ChatMessage], Optional[List[Tool]]]:
+    """
+    提取 system prompt 和 tool 文档。
+
+    Args:
+        messages: 消息列表
+        tools: 工具列表
+
+    Returns:
+        (system_prompt, non_system_messages, processed_tools)
+    """
+    # 处理 tools 中的长 descriptions
+    processed_tools, tool_documentation = process_tools_with_long_descriptions(tools)
+
+    # 提取 system prompt
+    system_prompt = ""
+    non_system_messages = []
+    for msg in messages:
+        if msg.role == "system":
+            system_prompt += extract_text_content(msg.content) + "\n"
+        else:
+            non_system_messages.append(msg)
+    system_prompt = system_prompt.strip()
+
+    # 添加 tool 文档到 system prompt
+    if tool_documentation:
+        system_prompt = system_prompt + tool_documentation if system_prompt else tool_documentation.strip()
+
+    return system_prompt, non_system_messages, processed_tools
+
+
 def build_kiro_payload(
     request_data: ChatCompletionRequest,
     conversation_id: str,
@@ -421,24 +455,12 @@ def build_kiro_payload(
         ValueError: Если нет сообщений для отправки
     """
     messages = list(request_data.messages)
-    
-    # Обрабатываем tools с длинными descriptions
-    processed_tools, tool_documentation = process_tools_with_long_descriptions(request_data.tools)
-    
-    # Извлекаем system prompt
-    system_prompt = ""
-    non_system_messages = []
-    for msg in messages:
-        if msg.role == "system":
-            system_prompt += extract_text_content(msg.content) + "\n"
-        else:
-            non_system_messages.append(msg)
-    system_prompt = system_prompt.strip()
-    
-    # Добавляем документацию по tools в system prompt если есть
-    if tool_documentation:
-        system_prompt = system_prompt + tool_documentation if system_prompt else tool_documentation.strip()
-    
+
+    # 使用辅助函数提取 system prompt 和处理 tools（代码简化）
+    system_prompt, non_system_messages, processed_tools = _extract_system_and_tool_docs(
+        messages, request_data.tools
+    )
+
     # Объединяем соседние сообщения с одинаковой ролью
     merged_messages = merge_adjacent_messages(non_system_messages)
     

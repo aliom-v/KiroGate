@@ -34,7 +34,7 @@ import httpx
 from loguru import logger
 
 from kiro_gateway.parsers import AwsEventStreamParser, parse_bracket_tool_calls, deduplicate_tool_calls
-from kiro_gateway.config import FIRST_TOKEN_TIMEOUT, FIRST_TOKEN_MAX_RETRIES
+from kiro_gateway.config import settings
 from kiro_gateway.tokenizer import count_tokens, count_message_tokens, count_tools_tokens
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class BaseStreamHandler(ABC):
         model: str,
         model_cache: "ModelInfoCache",
         auth_manager: "KiroAuthManager",
-        first_token_timeout: float = FIRST_TOKEN_TIMEOUT,
+        first_token_timeout: float = settings.first_token_timeout,
         request_messages: Optional[List] = None,
         request_tools: Optional[List] = None
     ):
