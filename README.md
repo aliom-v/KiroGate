@@ -88,10 +88,14 @@ docker logs -f kirogate
 
 ### 方式一: JSON 凭证文件（推荐）
 
-在 `.env` 中指定凭证文件路径:
+在 `.env` 中指定凭证文件路径或远程 URL:
 
 ```env
+# 本地文件
 KIRO_CREDS_FILE="~/.aws/sso/cache/kiro-auth-token.json"
+
+# 或远程 URL
+KIRO_CREDS_FILE="https://example.com/kiro-credentials.json"
 
 # 用于保护你的代理服务器的密码（自己设置一个安全的字符串）
 # 连接网关时需要使用这个密码作为 api_key

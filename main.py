@@ -120,64 +120,49 @@ def validate_configuration() -> None:
     """
     验证所需配置是否存在。
 
-    检查：
-    - .env 文件是否存在
-    - 是否配置了 REFRESH_TOKEN 或 KIRO_CREDS_FILE
+    检查是否配置了 REFRESH_TOKEN 或 KIRO_CREDS_FILE。
+    支持从 .env 文件或环境变量读取。
 
     Raises:
         SystemExit: 如果缺少关键配置
     """
     errors = []
 
-    # 检查 .env 文件是否存在
-    env_file = Path(".env")
-    env_example = Path(".env.example")
+    # 检查凭证配置
+    has_refresh_token = bool(settings.refresh_token)
+    has_creds_file = bool(settings.kiro_creds_file)
 
-    if not env_file.exists():
-        errors.append(
-            ".env file not found!\n"
-            "\n"
-            "To get started:\n"
-            "1. Create .env or rename from .env.example:\n"
-            "   cp .env.example .env\n"
-            "\n"
-            "2. Edit .env and configure your credentials:\n"
-            "   2.1. Set you super-secret password as PROXY_API_KEY\n"
-            "   2.2. Set your Kiro credentials:\n"
-            "      - 1 way: KIRO_CREDS_FILE to your Kiro credentials JSON file\n"
-            "      - 2 way: REFRESH_TOKEN from Kiro IDE traffic\n"
-            "\n"
-            "See README.md for detailed instructions."
-        )
-    else:
-        # .env 存在，检查凭证
-        has_refresh_token = bool(settings.refresh_token)
-        has_creds_file = bool(settings.kiro_creds_file)
-
-        # 检查凭证文件是否实际存在
-        if settings.kiro_creds_file:
+    # 检查凭证文件是否实际存在（URL 跳过本地路径检查）
+    if settings.kiro_creds_file:
+        is_url = settings.kiro_creds_file.startswith(('http://', 'https://'))
+        if not is_url:
             creds_path = Path(settings.kiro_creds_file).expanduser()
             if not creds_path.exists():
                 has_creds_file = False
                 logger.warning(f"KIRO_CREDS_FILE not found: {settings.kiro_creds_file}")
 
-        if not has_refresh_token and not has_creds_file:
-            errors.append(
-                "No Kiro credentials configured!\n"
-                "\n"
-                "   Configure one of the following in your .env file:\n"
-                "\n"
-                "Set you super-secret password as PROXY_API_KEY\n"
-                "   PROXY_API_KEY=\"my-super-secret-password-123\"\n"
-                "\n"
-                "   Option 1 (Recommended): JSON credentials file\n"
-                "      KIRO_CREDS_FILE=\"path/to/your/kiro-credentials.json\"\n"
-                "\n"
-                "   Option 2: Refresh token\n"
-                "      REFRESH_TOKEN=\"your_refresh_token_here\"\n"
-                "\n"
-                "   See README.md for how to obtain credentials."
-            )
+    if not has_refresh_token and not has_creds_file:
+        errors.append(
+            "No Kiro credentials configured!\n"
+            "\n"
+            "Configure one of the following:\n"
+            "\n"
+            "Option 1: Refresh token (environment variable)\n"
+            "   REFRESH_TOKEN=\"your_refresh_token_here\"\n"
+            "\n"
+            "Option 2: JSON credentials file\n"
+            "   KIRO_CREDS_FILE=\"path/to/your/kiro-credentials.json\"\n"
+            "\n"
+            "For local development:\n"
+            "   1. Create .env file: cp .env.example .env\n"
+            "   2. Edit .env and add your credentials\n"
+            "\n"
+            "For cloud deployment (Fly.io, Docker, etc.):\n"
+            "   Set environment variables directly\n"
+            "   Example: flyctl secrets set REFRESH_TOKEN=your_token\n"
+            "\n"
+            "See README.md for how to obtain credentials."
+        )
 
     # 打印错误并退出（如果有）
     if errors:
@@ -193,10 +178,14 @@ def validate_configuration() -> None:
         sys.exit(1)
 
     # 记录成功的配置
+    config_source = "environment variables" if not Path(".env").exists() else ".env file"
     if settings.kiro_creds_file:
-        logger.info(f"Using credentials file: {settings.kiro_creds_file}")
+        if settings.kiro_creds_file.startswith(('http://', 'https://')):
+            logger.info(f"Using credentials from URL: {settings.kiro_creds_file} (via {config_source})")
+        else:
+            logger.info(f"Using credentials file: {settings.kiro_creds_file} (via {config_source})")
     elif settings.refresh_token:
-        logger.info("Using refresh token from environment")
+        logger.info(f"Using refresh token (via {config_source})")
 
 
 # 运行配置验证

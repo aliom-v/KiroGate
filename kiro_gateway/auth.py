@@ -106,9 +106,14 @@ class KiroAuthManager:
         if creds_file:
             self._load_credentials_from_file(creds_file)
 
+    @staticmethod
+    def _is_url(path: str) -> bool:
+        """Check if path is a URL."""
+        return path.startswith(('http://', 'https://'))
+
     def _load_credentials_from_file(self, file_path: str) -> None:
         """
-        Load credentials from JSON file.
+        Load credentials from JSON file or remote URL.
 
         Supported fields in JSON:
         - refreshToken: Refresh token
@@ -118,16 +123,25 @@ class KiroAuthManager:
         - expiresAt: Token expiration time (ISO 8601)
 
         Args:
-            file_path: Path to JSON file
+            file_path: Path to JSON file or remote URL (http/https)
         """
         try:
-            path = Path(file_path).expanduser()
-            if not path.exists():
-                logger.warning(f"Credentials file not found: {file_path}")
-                return
+            if self._is_url(file_path):
+                # Fetch from remote URL
+                response = httpx.get(file_path, timeout=10.0, follow_redirects=True)
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"Credentials loaded from URL: {file_path}")
+            else:
+                # Load from local file
+                path = Path(file_path).expanduser()
+                if not path.exists():
+                    logger.warning(f"Credentials file not found: {file_path}")
+                    return
 
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                logger.info(f"Credentials loaded from file: {file_path}")
 
             if 'refreshToken' in data:
                 self._refresh_token = data['refreshToken']
@@ -153,10 +167,12 @@ class KiroAuthManager:
                 except Exception as e:
                     logger.warning(f"Failed to parse expiresAt: {e}")
 
-            logger.info(f"Credentials loaded from {file_path}")
-
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error loading credentials from URL: {e}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error loading credentials from URL: {e}")
         except Exception as e:
-            logger.error(f"Error loading credentials from file: {e}")
+            logger.error(f"Error loading credentials: {e}")
 
     def _save_credentials_to_file(self) -> None:
         """
