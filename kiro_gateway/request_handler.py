@@ -415,7 +415,7 @@ class RequestHandler:
                 openai_request = convert_anthropic_to_openai_request(request_data)
             except Exception as e:
                 logger.error(f"Failed to convert Anthropic request: {e}")
-                raise HTTPException(status_code=400, detail=f"Invalid request format: {str(e)}")
+                raise HTTPException(status_code=400, detail=f"请求格式无效: {str(e)}")
         else:
             openai_request = request_data
 
@@ -563,4 +563,4 @@ class RequestHandler:
             RequestHandler.log_error(endpoint_name, error_msg, 500)
             if debug_logger:
                 debug_logger.flush_on_error(500, error_msg)
-            raise HTTPException(status_code=500, detail=f"Internal Server Error: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"服务器内部错误: {error_msg}")

@@ -5,6 +5,9 @@ primary_region = "nrt"
   # 使用外部已构建镜像时可以为空
   # image = "registry.fly.io/kirogate:latest"
 
+[env]
+  USER_DB_FILE = "/app/data/users.db"
+
 [http_service]
   internal_port = 8000
   force_https = true
@@ -16,6 +19,10 @@ primary_region = "nrt"
   min_machines_running = 1
 
   processes = ["app"]
+
+[[mounts]]
+  source = "kirogate_data"
+  destination = "/app/data"
 
 [[vm]]
   cpu_kind = "shared"

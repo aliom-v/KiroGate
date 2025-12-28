@@ -243,16 +243,16 @@ class UserManager:
         # Exchange code for token
         token_data = await self.oauth.exchange_code(code)
         if not token_data:
-            return None, "Failed to exchange authorization code"
+            return None, "授权码交换失败"
 
         access_token = token_data.get("access_token")
         if not access_token:
-            return None, "No access token in response"
+            return None, "响应中缺少访问令牌"
 
         # Get user info
         user_info = await self.oauth.get_user_info(access_token)
         if not user_info:
-            return None, "Failed to get user info"
+            return None, "获取用户信息失败"
 
         # Extract user data
         linuxdo_id = str(user_info.get("id", ""))
@@ -261,7 +261,7 @@ class UserManager:
         trust_level = user_info.get("trust_level", 0)
 
         if not linuxdo_id:
-            return None, "Invalid user info: missing ID"
+            return None, "用户信息无效：缺少 ID"
 
         # Check if user exists
         user = user_db.get_user_by_linuxdo(linuxdo_id)
@@ -270,7 +270,7 @@ class UserManager:
             user_db.update_last_login(user.id)
             # Check if banned
             if user.is_banned:
-                return None, "User is banned"
+                return None, "用户已被封禁"
         else:
             # Create new user
             user = user_db.create_user(
@@ -298,16 +298,16 @@ class UserManager:
         # Exchange code for token
         token_data = await self.github.exchange_code(code)
         if not token_data:
-            return None, "Failed to exchange authorization code"
+            return None, "授权码交换失败"
 
         access_token = token_data.get("access_token")
         if not access_token:
-            return None, "No access token in response"
+            return None, "响应中缺少访问令牌"
 
         # Get user info
         user_info = await self.github.get_user_info(access_token)
         if not user_info:
-            return None, "Failed to get user info"
+            return None, "获取用户信息失败"
 
         # Extract user data
         github_id = str(user_info.get("id", ""))
@@ -315,7 +315,7 @@ class UserManager:
         avatar_url = user_info.get("avatar_url", "")
 
         if not github_id:
-            return None, "Invalid user info: missing ID"
+            return None, "用户信息无效：缺少 ID"
 
         # Check if user exists by GitHub ID
         user = user_db.get_user_by_github(github_id)
@@ -324,7 +324,7 @@ class UserManager:
             user_db.update_last_login(user.id)
             # Check if banned
             if user.is_banned:
-                return None, "User is banned"
+                return None, "用户已被封禁"
         else:
             # Create new user with GitHub ID
             user = user_db.create_user(

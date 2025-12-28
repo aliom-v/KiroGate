@@ -240,12 +240,12 @@ class KiroHttpClient:
         if stream:
             raise HTTPException(
                 status_code=504,
-                detail=f"Model did not respond within {timeout}s after {max_retries} attempts. Please try again."
+                detail=f"模型在 {max_retries} 次尝试后仍未在 {timeout}s 内响应，请稍后再试。"
             )
         else:
             raise HTTPException(
                 status_code=502,
-                detail=f"Failed to complete request after {max_retries} attempts: {last_error}"
+                detail=f"在 {max_retries} 次尝试后仍未完成请求: {last_error}"
             )
 
     def _get_headers(self, token: str) -> dict:

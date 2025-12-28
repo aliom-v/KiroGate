@@ -25,12 +25,32 @@ Adds unique ID to each request for log correlation and debugging.
 
 import time
 import uuid
-from typing import Callable
+from datetime import datetime
+from typing import Callable, Optional
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from loguru import logger
+
+
+def get_timestamp() -> str:
+    """获取格式化的时间戳。"""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def get_user_info(request: Request) -> str:
+    """从请求中提取用户信息。"""
+    try:
+        if hasattr(request.state, "username"):
+            return request.state.username
+        if hasattr(request.state, "api_key_id"):
+            return f"API Key #{request.state.api_key_id}"
+        if hasattr(request.state, "donated_token_id"):
+            return f"Token #{request.state.donated_token_id}"
+    except Exception:
+        pass
+    return "匿名"
 
 
 def get_client_ip(request: Request) -> str:
@@ -76,9 +96,10 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
 
         # Use loguru context to bind request ID
         with logger.contextualize(request_id=request_id):
+            client_ip = get_client_ip(request)
             logger.info(
-                f"Request started: {request.method} {request.url.path} "
-                f"(query: {request.url.query})"
+                f"[{get_timestamp()}] [IP: {client_ip}] 请求开始: {request.method} {request.url.path}"
+                + (f" 参数: {request.url.query}" if request.url.query else "")
             )
 
             try:
@@ -86,23 +107,28 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
 
                 # Calculate processing time
                 process_time = time.time() - start_time
+                user_info = get_user_info(request)
 
                 # Add response headers
                 response.headers["X-Request-ID"] = request_id
                 response.headers["X-Process-Time"] = str(round(process_time, 4))
 
+                status_text = "成功" if 200 <= response.status_code < 400 else "失败"
                 logger.info(
-                    f"Request completed: {request.method} {request.url.path} "
-                    f"status={response.status_code} time={process_time:.4f}s"
+                    f"[{get_timestamp()}] [用户: {user_info}] [IP: {client_ip}] "
+                    f"请求{status_text}: {request.method} {request.url.path} "
+                    f"状态码={response.status_code} 耗时={process_time:.4f}秒"
                 )
 
                 return response
 
             except Exception as e:
                 process_time = time.time() - start_time
+                user_info = get_user_info(request)
                 logger.error(
-                    f"Request failed: {request.method} {request.url.path} "
-                    f"error={str(e)} time={process_time:.4f}s"
+                    f"[{get_timestamp()}] [用户: {user_info}] [IP: {client_ip}] "
+                    f"请求异常: {request.method} {request.url.path} "
+                    f"错误={str(e)} 耗时={process_time:.4f}秒"
                 )
                 raise
 
@@ -194,7 +220,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     user_db.record_api_key_usage(api_key_id)
 
         except Exception as e:
-            logger.debug(f"Failed to track token usage: {e}")
+            logger.debug(f"[{get_timestamp()}] Token 使用追踪失败: {e}")
 
 
 class SiteGuardMiddleware(BaseHTTPMiddleware):
@@ -260,8 +286,11 @@ class SiteGuardMiddleware(BaseHTTPMiddleware):
         from kiro_gateway.metrics import metrics
         from starlette.responses import HTMLResponse
 
-        # Allow admin routes
-        if request.url.path.startswith("/admin"):
+        path = request.url.path
+
+        # Allow admin, auth and static routes
+        exempt_prefixes = ("/admin", "/login", "/oauth", "/user", "/static", "/docs", "/openapi.json")
+        if any(path.startswith(p) for p in exempt_prefixes):
             return await call_next(request)
 
         # Check site status
