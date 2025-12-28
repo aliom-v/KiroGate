@@ -158,6 +158,39 @@ COMMON_HEAD = f'''
       background: var(--border-dark);
       border-radius: 3px;
     }}
+    .announcement-banner {{
+      background: rgba(99, 102, 241, 0.08);
+      border-bottom: 1px solid var(--border);
+    }}
+    .announcement-banner .title {{
+      color: var(--text);
+    }}
+    .announcement-banner .content {{
+      color: var(--text);
+    }}
+    .btn-announcement {{
+      background: var(--primary);
+      color: #fff;
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      transition: opacity 0.2s;
+    }}
+    .btn-announcement:hover {{
+      opacity: 0.9;
+    }}
+    .btn-announcement-outline {{
+      background: var(--bg-card);
+      color: var(--text);
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      border: 1px solid var(--border);
+      transition: opacity 0.2s;
+    }}
+    .btn-announcement-outline:hover {{
+      opacity: 0.9;
+    }}
   </style>
   <script>
     // Theme initialization
@@ -227,7 +260,65 @@ COMMON_NAV = f'''
       </div>
     </div>
   </nav>
+  <div id="siteAnnouncement" class="announcement-banner" style="display: none;">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div class="flex items-start gap-2">
+        <span class="text-lg">📣</span>
+        <div>
+          <div class="text-sm font-semibold title">站点公告</div>
+          <div id="siteAnnouncementContent" class="text-sm content"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="markAnnouncementRead()" class="btn-announcement">已读</button>
+        <button onclick="dismissAnnouncement()" class="btn-announcement-outline">不再提醒</button>
+      </div>
+    </div>
+  </div>
   <script>
+    let currentAnnouncementId = null;
+
+    function hideAnnouncement() {{
+      const banner = document.getElementById('siteAnnouncement');
+      if (banner) banner.style.display = 'none';
+    }}
+
+    async function loadAnnouncement() {{
+      try {{
+        const r = await fetch('/user/api/announcement');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!d.active || !d.announcement || !d.announcement.content) return;
+        currentAnnouncementId = d.announcement.id;
+        const banner = document.getElementById('siteAnnouncement');
+        const content = document.getElementById('siteAnnouncementContent');
+        if (banner && content) {{
+          content.textContent = d.announcement.content;
+          banner.style.display = 'block';
+        }}
+      }} catch {{}}
+    }}
+
+    async function markAnnouncementRead() {{
+      if (!currentAnnouncementId) return;
+      const fd = new FormData();
+      fd.append('announcement_id', currentAnnouncementId);
+      try {{
+        await fetch('/user/api/announcement/read', {{ method: 'POST', body: fd }});
+      }} catch {{}}
+      hideAnnouncement();
+    }}
+
+    async function dismissAnnouncement() {{
+      if (!currentAnnouncementId) return;
+      const fd = new FormData();
+      fd.append('announcement_id', currentAnnouncementId);
+      try {{
+        await fetch('/user/api/announcement/dismiss', {{ method: 'POST', body: fd }});
+      }} catch {{}}
+      hideAnnouncement();
+    }}
+
     function toggleTheme() {{
       const html = document.documentElement;
       const currentTheme = html.getAttribute('data-theme');
@@ -290,6 +381,7 @@ COMMON_NAV = f'''
               <span>${{d.username || '用户中心'}}</span>
             </a>`;
           }}
+          loadAnnouncement();
         }}
       }} catch {{}}
     }})();
@@ -369,7 +461,7 @@ def render_home_page() -> str:
       <div class="card">
         <div class="text-3xl mb-4">👥</div>
         <h3 class="text-xl font-semibold mb-2">用户系统</h3>
-        <p style="color: var(--text-muted);">支持 LinuxDo/GitHub 登录，捐献 Token 获取 API Key。</p>
+        <p style="color: var(--text-muted);">支持 LinuxDo/GitHub 登录，添加 Token 获取 API Key。</p>
       </div>
       <div class="card">
         <div class="text-3xl mb-4">🔑</div>
@@ -379,7 +471,7 @@ def render_home_page() -> str:
       <div class="card">
         <div class="text-3xl mb-4">🎁</div>
         <h3 class="text-xl font-semibold mb-2">Token 共享池</h3>
-        <p style="color: var(--text-muted);">公开捐献的 Token 组成共享池，智能负载均衡。</p>
+        <p style="color: var(--text-muted);">公开添加的 Token 组成共享池，智能负载均衡。</p>
       </div>
       <div class="card">
         <div class="text-3xl mb-4">🔁</div>
@@ -468,7 +560,7 @@ Authorization: Bearer sk-xxxxxxxxxxxxxxxx
 
 # Anthropic 格式
 x-api-key: sk-xxxxxxxxxxxxxxxx</pre>
-        <p class="text-sm mb-4" style="color: var(--text-muted);">登录后在用户中心生成，自动使用您捐献的 Token 或公开 Token 池。</p>
+        <p class="text-sm mb-4" style="color: var(--text-muted);">登录后在用户中心生成，自动使用您添加的 Token 或公开 Token 池。</p>
 
         <h3 class="text-lg font-medium mb-2 text-indigo-400">模式 2: 组合模式（用户自带 REFRESH_TOKEN）</h3>
         <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
@@ -1580,6 +1672,7 @@ def render_admin_page() -> str:
       <div class="tab" onclick="showTab('ip-stats')">🌐 IP 统计</div>
       <div class="tab" onclick="showTab('blacklist')">🚫 黑名单</div>
       <div class="tab" onclick="showTab('tokens')">🔑 缓存</div>
+      <div class="tab" onclick="showTab('announcement')">📣 公告</div>
       <div class="tab" onclick="showTab('system')">⚙️ 系统</div>
     </div>
 
@@ -1650,7 +1743,7 @@ def render_admin_page() -> str:
     <div id="tab-donated-tokens" class="tab-content hidden">
       <div class="card">
         <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
-          <h2 class="text-lg font-semibold">🎁 捐献 Token 池</h2>
+          <h2 class="text-lg font-semibold">🎁 添加 Token 池</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="poolSearch" placeholder="搜索用户名..." oninput="filterPoolTokens()"
               class="px-3 py-2 rounded-lg text-sm w-40" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
@@ -1865,6 +1958,28 @@ def render_admin_page() -> str:
       </div>
     </div>
 
+    <!-- Tab Content: Announcement -->
+    <div id="tab-announcement" class="tab-content hidden">
+      <div class="card">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h2 class="text-lg font-semibold">📣 站点公告</h2>
+          <label class="switch">
+            <input type="checkbox" id="announcementToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <textarea id="announcementContent" class="w-full h-36 p-3 rounded-lg" style="background: var(--bg-input); border: 1px solid var(--border);" placeholder="请输入公告内容..."></textarea>
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
+          <span class="text-xs" style="color: var(--text-muted);">最近更新：<span id="announcementUpdatedAt">-</span></span>
+          <div class="flex items-center gap-2">
+            <button onclick="refreshAnnouncement()" class="btn" style="background: var(--bg-input); border: 1px solid var(--border);">刷新</button>
+            <button onclick="saveAnnouncement()" class="btn btn-primary">保存</button>
+          </div>
+        </div>
+        <p class="text-xs mt-3" style="color: var(--text-muted);">公告开启后，用户可标记已读或不再提醒；更新内容会重新提醒所有用户。</p>
+      </div>
+    </div>
+
     <!-- Tab Content: System -->
     <div id="tab-system" class="tab-content hidden">
       <div class="grid md:grid-cols-2 gap-6">
@@ -1914,13 +2029,101 @@ def render_admin_page() -> str:
 
   <script>
     let currentTab = 'overview';
-    const allTabs = ['overview','users','donated-tokens','ip-stats','blacklist','tokens','system'];
+    const allTabs = ['overview','users','donated-tokens','ip-stats','blacklist','tokens','announcement','system'];
+
+    function buildQuery(params) {{
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {{
+        if (value === undefined || value === null || value === '') return;
+        qs.append(key, String(value));
+      }});
+      const str = qs.toString();
+      return str ? `?${{str}}` : '';
+    }}
+
+    async function fetchJson(url, options = {{}}) {{
+      const r = await fetch(url, options);
+      const text = await r.text();
+      let data = {{}};
+      try {{ data = text ? JSON.parse(text) : {{}}; }} catch (e) {{ data = {{}}; }}
+      if (!r.ok) throw data;
+      return data;
+    }}
+
+    let currentAnnouncementId = null;
+
+    async function refreshAnnouncement() {{
+      try {{
+        const d = await fetchJson('/admin/api/announcement');
+        const ann = d.announcement || null;
+        currentAnnouncementId = ann ? ann.id : null;
+        document.getElementById('announcementContent').value = ann?.content || '';
+        document.getElementById('announcementToggle').checked = !!d.is_active;
+        const updated = ann?.updated_at ? new Date(ann.updated_at).toLocaleString() : '-';
+        document.getElementById('announcementUpdatedAt').textContent = updated;
+      }} catch (e) {{ console.error(e); }}
+    }}
+
+    async function saveAnnouncement() {{
+      const content = document.getElementById('announcementContent').value.trim();
+      const isActive = document.getElementById('announcementToggle').checked;
+      if (isActive && !content) {{
+        alert('请填写公告内容');
+        return;
+      }}
+      const fd = new FormData();
+      fd.append('content', content);
+      fd.append('is_active', isActive ? 'true' : 'false');
+      try {{
+        await fetchJson('/admin/api/announcement', {{ method: 'POST', body: fd }});
+        alert('保存成功');
+        refreshAnnouncement();
+      }} catch (e) {{
+        alert(e.error || '保存失败');
+      }}
+    }}
 
     function renderTokenStatus(status) {{
       if (status === 'active') return '<span class="text-green-400">有效</span>';
       if (status === 'invalid') return '<span class="text-red-400">无效</span>';
       if (status === 'expired') return '<span class="text-red-400">已过期</span>';
       return `<span class="text-red-400">${{status || '-'}}</span>`;
+    }}
+
+    function setTokenVisibility(value) {{
+      document.getElementById('tokenVisibilityFilter').value = value;
+      updateTokenChips();
+      filterTokens();
+    }}
+
+    function setTokenStatus(value) {{
+      document.getElementById('tokenStatusFilter').value = value;
+      updateTokenChips();
+      filterTokens();
+    }}
+
+    function updateTokenChips() {{
+      const visibility = document.getElementById('tokenVisibilityFilter').value;
+      const status = document.getElementById('tokenStatusFilter').value;
+      document.querySelectorAll('.filter-chip[data-group="visibility"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === visibility);
+      }});
+      document.querySelectorAll('.filter-chip[data-group="status"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === status);
+      }});
+    }}
+
+    function setKeysActive(value) {{
+      document.getElementById('keysActiveFilter').value = value;
+      updateKeysChips();
+      filterKeys();
+    }}
+
+    function updateKeysChips() {{
+      const activeValue = document.getElementById('keysActiveFilter').value;
+      document.querySelectorAll('.filter-chip[data-group="keys-active"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === activeValue);
+      }});
     }}
 
     function showTab(tab) {{
@@ -1934,12 +2137,12 @@ def render_admin_page() -> str:
       if (tab === 'ip-stats') refreshIpStats();
       if (tab === 'blacklist') refreshBlacklist();
       if (tab === 'tokens') refreshTokenList();
+      if (tab === 'announcement') refreshAnnouncement();
     }}
 
     async function refreshStats() {{
       try {{
-        const r = await fetch('/admin/api/stats');
-        const d = await r.json();
+        const d = await fetchJson('/admin/api/stats');
         // Site toggle and icon
         const siteEnabled = d.site_enabled;
         document.getElementById('siteIcon').textContent = siteEnabled ? '🟢' : '🔴';
@@ -1968,40 +2171,32 @@ def render_admin_page() -> str:
 
     async function refreshIpStats() {{
       try {{
-        const r = await fetch('/admin/api/ip-stats');
-        const d = await r.json();
-        allIpStats = d || [];
-        ipStatsCurrentPage = 1;
+        const pageSize = parseInt(document.getElementById('ipStatsPageSize').value);
+        const search = document.getElementById('ipStatsSearch').value.trim();
+        const d = await fetchJson('/admin/api/ip-stats' + buildQuery({{
+          page: ipStatsCurrentPage,
+          page_size: pageSize,
+          search,
+          sort_field: ipStatsSortField,
+          sort_order: ipStatsSortAsc ? 'asc' : 'desc'
+        }}));
+        allIpStats = d.items || [];
+        const total = d.pagination?.total ?? allIpStats.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && ipStatsCurrentPage > totalPages) {{
+          ipStatsCurrentPage = totalPages;
+          return refreshIpStats();
+        }}
         selectedIps.clear();
         document.getElementById('selectAllIps').checked = false;
-        filterIpStats();
+        renderIpStatsTable(allIpStats);
+        renderIpStatsPagination(total, pageSize, totalPages);
       }} catch (e) {{ console.error(e); }}
     }}
 
     function filterIpStats() {{
-      const search = document.getElementById('ipStatsSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('ipStatsPageSize').value);
-
-      let filtered = allIpStats.filter(ip => ip.ip.toLowerCase().includes(search));
-
-      filtered.sort((a, b) => {{
-        let va = a[ipStatsSortField], vb = b[ipStatsSortField];
-        if (ipStatsSortField === 'last_seen') {{
-          va = va || 0;
-          vb = vb || 0;
-        }}
-        if (va < vb) return ipStatsSortAsc ? -1 : 1;
-        if (va > vb) return ipStatsSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (ipStatsCurrentPage > totalPages) ipStatsCurrentPage = totalPages;
-      const start = (ipStatsCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderIpStatsTable(paged);
-      renderIpStatsPagination(filtered.length, pageSize, totalPages);
+      ipStatsCurrentPage = 1;
+      refreshIpStats();
     }}
 
     function sortIpStats(field) {{
@@ -2011,12 +2206,13 @@ def render_admin_page() -> str:
         ipStatsSortField = field;
         ipStatsSortAsc = false;
       }}
-      filterIpStats();
+      ipStatsCurrentPage = 1;
+      refreshIpStats();
     }}
 
     function goIpStatsPage(page) {{
       ipStatsCurrentPage = page;
-      filterIpStats();
+      refreshIpStats();
     }}
 
     function toggleSelectAllIps(checked) {{
@@ -2052,19 +2248,22 @@ def render_admin_page() -> str:
         tb.innerHTML = '<tr><td colspan="5" class="py-6 text-center" style="color: var(--text-muted);">暂无数据</td></tr>';
         return;
       }}
-      tb.innerHTML = ips.map(ip => `
+      tb.innerHTML = ips.map(ip => {{
+        const lastSeen = ip.last_seen ?? ip.lastSeen;
+        return `
         <tr class="table-row">
           <td class="py-3 px-3">
             <input type="checkbox" value="${{ip.ip}}" ${{selectedIps.has(ip.ip) ? 'checked' : ''}} onchange="toggleIpSelection('${{ip.ip}}', this.checked)">
           </td>
           <td class="py-3 px-3 font-mono">${{ip.ip}}</td>
           <td class="py-3 px-3">${{ip.count}}</td>
-          <td class="py-3 px-3">${{ip.last_seen ? new Date(ip.last_seen * 1000).toLocaleString() : '-'}}</td>
+          <td class="py-3 px-3">${{lastSeen ? new Date(lastSeen).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3">
             <button onclick="banIpDirect('${{ip.ip}}')" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">封禁</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
     }}
 
     function renderIpStatsPagination(total, pageSize, totalPages) {{
@@ -2106,46 +2305,32 @@ def render_admin_page() -> str:
 
     async function refreshBlacklist() {{
       try {{
-        const r = await fetch('/admin/api/blacklist');
-        const d = await r.json();
-        allBlacklist = d || [];
-        blacklistCurrentPage = 1;
+        const pageSize = parseInt(document.getElementById('blacklistPageSize').value);
+        const search = document.getElementById('blacklistSearch').value.trim();
+        const d = await fetchJson('/admin/api/blacklist' + buildQuery({{
+          page: blacklistCurrentPage,
+          page_size: pageSize,
+          search,
+          sort_field: blacklistSortField,
+          sort_order: blacklistSortAsc ? 'asc' : 'desc'
+        }}));
+        allBlacklist = d.items || [];
+        const total = d.pagination?.total ?? allBlacklist.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && blacklistCurrentPage > totalPages) {{
+          blacklistCurrentPage = totalPages;
+          return refreshBlacklist();
+        }}
         selectedBlacklistIps.clear();
-        filterBlacklist();
+        renderBlacklistTable(allBlacklist);
+        renderBlacklistPagination(total, pageSize, totalPages);
+        updateBatchUnbanButton();
       }} catch (e) {{ console.error(e); }}
     }}
 
     function filterBlacklist() {{
-      const search = document.getElementById('blacklistSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('blacklistPageSize').value);
-
-      // 筛选
-      let filtered = allBlacklist.filter(b =>
-        b.ip.toLowerCase().includes(search) ||
-        (b.reason || '').toLowerCase().includes(search)
-      );
-
-      // 排序
-      filtered.sort((a, b) => {{
-        let va = a[blacklistSortField], vb = b[blacklistSortField];
-        if (blacklistSortField === 'banned_at') {{
-          va = va || 0;
-          vb = vb || 0;
-        }}
-        if (va < vb) return blacklistSortAsc ? -1 : 1;
-        if (va > vb) return blacklistSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      // 分页
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (blacklistCurrentPage > totalPages) blacklistCurrentPage = totalPages;
-      const start = (blacklistCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderBlacklistTable(paged);
-      renderBlacklistPagination(filtered.length, pageSize, totalPages);
-      updateBatchUnbanButton();
+      blacklistCurrentPage = 1;
+      refreshBlacklist();
     }}
 
     function sortBlacklist(field) {{
@@ -2155,12 +2340,13 @@ def render_admin_page() -> str:
         blacklistSortField = field;
         blacklistSortAsc = true;
       }}
-      filterBlacklist();
+      blacklistCurrentPage = 1;
+      refreshBlacklist();
     }}
 
     function goBlacklistPage(page) {{
       blacklistCurrentPage = page;
-      filterBlacklist();
+      refreshBlacklist();
     }}
 
     function renderBlacklistTable(blacklist) {{
@@ -2170,19 +2356,22 @@ def render_admin_page() -> str:
         document.getElementById('blacklistSelectAll').checked = false;
         return;
       }}
-      tb.innerHTML = blacklist.map(ip => `
+      tb.innerHTML = blacklist.map(ip => {{
+        const bannedAt = ip.banned_at ?? ip.bannedAt;
+        return `
         <tr class="table-row">
           <td class="py-3 px-3">
             <input type="checkbox" class="blacklist-checkbox" value="${{ip.ip}}" onchange="toggleBlacklistSelection('${{ip.ip}}', this.checked)">
           </td>
           <td class="py-3 px-3 font-mono">${{ip.ip}}</td>
-          <td class="py-3 px-3">${{ip.banned_at ? new Date(ip.banned_at * 1000).toLocaleString() : '-'}}</td>
+          <td class="py-3 px-3">${{bannedAt ? new Date(bannedAt).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3">${{ip.reason || '-'}}</td>
           <td class="py-3 px-3">
             <button onclick="unbanIp('${{ip.ip}}')" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30">解封</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
 
       // Update checkbox states
       document.querySelectorAll('.blacklist-checkbox').forEach(cb => {{
@@ -2337,27 +2526,34 @@ def render_admin_page() -> str:
 
     async function refreshTokenList() {{
       try {{
-        const r = await fetch('/admin/api/tokens');
-        const d = await r.json();
-        allCachedTokens = (d.tokens || []).map((t, i) => ({{ ...t, index: i + 1 }}));
-        tokensCurrentPage = 1;
+        const pageSize = parseInt(document.getElementById('tokensPageSize').value);
+        const search = document.getElementById('tokensSearch').value.trim();
+        const d = await fetchJson('/admin/api/tokens' + buildQuery({{
+          page: tokensCurrentPage,
+          page_size: pageSize,
+          search
+        }}));
+        allCachedTokens = (d.tokens || []).map((t, i) => ({{ ...t, index: (tokensCurrentPage - 1) * pageSize + i + 1 }}));
+        const total = d.pagination?.total ?? d.count ?? allCachedTokens.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && tokensCurrentPage > totalPages) {{
+          tokensCurrentPage = totalPages;
+          return refreshTokenList();
+        }}
         selectedTokens.clear();
-        filterCachedTokens();
+        renderCachedTokens();
+        renderTokensPagination(total, pageSize, totalPages);
       }} catch (e) {{ console.error(e); }}
     }}
 
     function filterCachedTokens() {{
-      const search = document.getElementById('tokensSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('tokensPageSize').value);
+      tokensCurrentPage = 1;
+      refreshTokenList();
+    }}
 
-      // 筛选
-      let filtered = allCachedTokens.filter(t =>
-        t.masked_token.toLowerCase().includes(search) ||
-        t.token_id.toLowerCase().includes(search)
-      );
-
-      // 排序
-      filtered.sort((a, b) => {{
+    function renderCachedTokens() {{
+      const tokens = [...allCachedTokens];
+      tokens.sort((a, b) => {{
         let va = a[tokensSortField], vb = b[tokensSortField];
         if (tokensSortField === 'has_access_token') {{
           va = va ? 1 : 0;
@@ -2367,15 +2563,7 @@ def render_admin_page() -> str:
         if (va > vb) return tokensSortAsc ? 1 : -1;
         return 0;
       }});
-
-      // 分页
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (tokensCurrentPage > totalPages) tokensCurrentPage = totalPages;
-      const start = (tokensCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderTokensTable(paged);
-      renderTokensPagination(filtered.length, pageSize, totalPages);
+      renderTokensTable(tokens);
     }}
 
     function sortCachedTokens(field) {{
@@ -2385,12 +2573,12 @@ def render_admin_page() -> str:
         tokensSortField = field;
         tokensSortAsc = true;
       }}
-      filterCachedTokens();
+      renderCachedTokens();
     }}
 
     function goTokensPage(page) {{
       tokensCurrentPage = page;
-      filterCachedTokens();
+      refreshTokenList();
     }}
 
     function toggleAllTokens(checked) {{
@@ -2399,7 +2587,7 @@ def render_admin_page() -> str:
       }} else {{
         selectedTokens.clear();
       }}
-      filterCachedTokens();
+      renderCachedTokens();
     }}
 
     function toggleTokenSelection(tokenId, checked) {{
@@ -2510,44 +2698,30 @@ def render_admin_page() -> str:
 
     async function refreshUsers() {{
       try {{
-        const r = await fetch('/admin/api/users');
-        const d = await r.json();
+        const pageSize = parseInt(document.getElementById('usersPageSize').value);
+        const search = document.getElementById('usersSearch').value.trim();
+        const d = await fetchJson('/admin/api/users' + buildQuery({{
+          page: usersCurrentPage,
+          page_size: pageSize,
+          search,
+          sort_field: usersSortField,
+          sort_order: usersSortAsc ? 'asc' : 'desc'
+        }}));
         allUsers = d.users || [];
-        usersCurrentPage = 1;
-        filterUsers();
+        const total = d.pagination?.total ?? allUsers.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && usersCurrentPage > totalPages) {{
+          usersCurrentPage = totalPages;
+          return refreshUsers();
+        }}
+        renderUsersTable(allUsers);
+        renderUsersPagination(total, pageSize, totalPages);
       }} catch (e) {{ console.error(e); }}
     }}
 
     function filterUsers() {{
-      const search = document.getElementById('usersSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('usersPageSize').value);
-
-      // 筛选
-      let filtered = allUsers.filter(u =>
-        u.username.toLowerCase().includes(search) ||
-        u.id.toString().includes(search)
-      );
-
-      // 排序
-      filtered.sort((a, b) => {{
-        let va = a[usersSortField], vb = b[usersSortField];
-        if (usersSortField === 'created_at') {{
-          va = new Date(va || 0).getTime();
-          vb = new Date(vb || 0).getTime();
-        }}
-        if (va < vb) return usersSortAsc ? -1 : 1;
-        if (va > vb) return usersSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      // 分页
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (usersCurrentPage > totalPages) usersCurrentPage = totalPages;
-      const start = (usersCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderUsersTable(paged);
-      renderUsersPagination(filtered.length, pageSize, totalPages);
+      usersCurrentPage = 1;
+      refreshUsers();
     }}
 
     function sortUsers(field) {{
@@ -2557,12 +2731,13 @@ def render_admin_page() -> str:
         usersSortField = field;
         usersSortAsc = true;
       }}
-      filterUsers();
+      usersCurrentPage = 1;
+      refreshUsers();
     }}
 
     function goUsersPage(page) {{
       usersCurrentPage = page;
-      filterUsers();
+      refreshUsers();
     }}
 
     function renderUsersTable(users) {{
@@ -2636,7 +2811,7 @@ def render_admin_page() -> str:
       refreshUsers();
     }}
 
-    // 捐献 Token 池数据和状态
+    // 添加 Token 池数据和状态
     let allPoolTokens = [];
     let poolCurrentPage = 1;
     let poolSortField = 'id';
@@ -2646,8 +2821,17 @@ def render_admin_page() -> str:
 
     async function refreshDonatedTokens() {{
       try {{
-        const r = await fetch('/admin/api/donated-tokens');
-        const d = await r.json();
+        const pageSize = parseInt(document.getElementById('poolPageSize').value);
+        const search = document.getElementById('poolSearch').value.trim();
+        const visibility = document.getElementById('poolVisibilityFilter').value;
+        const d = await fetchJson('/admin/api/donated-tokens' + buildQuery({{
+          page: poolCurrentPage,
+          page_size: pageSize,
+          search,
+          visibility,
+          sort_field: poolSortField,
+          sort_order: poolSortAsc ? 'asc' : 'desc'
+        }}));
         poolStatsData = d;
         document.getElementById('poolTotalTokens').textContent = d.total || 0;
         document.getElementById('poolActiveTokens').textContent = d.active || 0;
@@ -2658,42 +2842,22 @@ def render_admin_page() -> str:
           success_rate: t.success_rate || 0,
           use_count: (t.success_count || 0) + (t.fail_count || 0)
         }}));
-        poolCurrentPage = 1;
+        const total = d.pagination?.total ?? allPoolTokens.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && poolCurrentPage > totalPages) {{
+          poolCurrentPage = totalPages;
+          return refreshDonatedTokens();
+        }}
         selectedPoolTokens.clear();
         document.getElementById('selectAllPool').checked = false;
-        filterPoolTokens();
+        renderPoolTable(allPoolTokens);
+        renderPoolPagination(total, pageSize, totalPages);
       }} catch (e) {{ console.error(e); }}
     }}
 
     function filterPoolTokens() {{
-      const search = document.getElementById('poolSearch').value.toLowerCase();
-      const visibility = document.getElementById('poolVisibilityFilter').value;
-      const pageSize = parseInt(document.getElementById('poolPageSize').value);
-
-      let filtered = allPoolTokens.filter(t => {{
-        const matchSearch = (t.username || '').toLowerCase().includes(search) || t.id.toString().includes(search);
-        const matchVisibility = !visibility || t.visibility === visibility;
-        return matchSearch && matchVisibility;
-      }});
-
-      filtered.sort((a, b) => {{
-        let va = a[poolSortField], vb = b[poolSortField];
-        if (poolSortField === 'last_used') {{
-          va = va ? new Date(va).getTime() : 0;
-          vb = vb ? new Date(vb).getTime() : 0;
-        }}
-        if (va < vb) return poolSortAsc ? -1 : 1;
-        if (va > vb) return poolSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (poolCurrentPage > totalPages) poolCurrentPage = totalPages;
-      const start = (poolCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderPoolTable(paged);
-      renderPoolPagination(filtered.length, pageSize, totalPages);
+      poolCurrentPage = 1;
+      refreshDonatedTokens();
     }}
 
     function sortPoolTokens(field) {{
@@ -2703,12 +2867,13 @@ def render_admin_page() -> str:
         poolSortField = field;
         poolSortAsc = false;
       }}
-      filterPoolTokens();
+      poolCurrentPage = 1;
+      refreshDonatedTokens();
     }}
 
     function goPoolPage(page) {{
       poolCurrentPage = page;
-      filterPoolTokens();
+      refreshDonatedTokens();
     }}
 
     function toggleSelectAllPool(checked) {{
@@ -2740,7 +2905,7 @@ def render_admin_page() -> str:
     function renderPoolTable(tokens) {{
       const tb = document.getElementById('donatedTokensTable');
       if (!tokens.length) {{
-        tb.innerHTML = '<tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">暂无捐献 Token</td></tr>';
+        tb.innerHTML = '<tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">暂无添加 Token</td></tr>';
         return;
       }}
       tb.innerHTML = tokens.map(t => `
@@ -2810,6 +2975,7 @@ def render_admin_page() -> str:
     }}
 
     refreshStats();
+    refreshAnnouncement();
     setInterval(refreshStats, 10000);
 
     // Theme management
@@ -2916,10 +3082,21 @@ def render_user_page(user) -> str:
 
         <!-- 我的 Token 面板 -->
         <div id="subtab-panel-mine">
-          <div class="flex flex-wrap items-center gap-3 mb-4">
+          <div class="flex flex-wrap items-center gap-3 mb-2">
             <h2 class="text-lg font-bold">我的 Token</h2>
             <div class="flex-1 flex items-center gap-2 flex-wrap">
               <input type="text" id="tokensSearch" placeholder="搜索 ID 或状态..." oninput="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); min-width: 160px;">
+              <select id="tokenVisibilityFilter" onchange="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);">
+                <option value="">全部可见性</option>
+                <option value="public">公开</option>
+                <option value="private">私有</option>
+              </select>
+              <select id="tokenStatusFilter" onchange="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);">
+                <option value="">全部状态</option>
+                <option value="active">有效</option>
+                <option value="invalid">无效</option>
+                <option value="expired">已过期</option>
+              </select>
               <select id="tokensPageSize" onchange="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);">
                 <option value="10">10 条/页</option>
                 <option value="20">20 条/页</option>
@@ -2928,7 +3105,18 @@ def render_user_page(user) -> str:
               <button onclick="refreshTokens()" class="btn btn-primary text-sm px-3 py-1.5 rounded-lg" style="background: var(--primary); color: white;">刷新</button>
               <button onclick="batchDeleteTokens()" id="batchDeleteBtn" class="btn btn-danger text-sm px-3 py-1.5 rounded-lg" style="background: #ef4444; color: white; display: none;">批量删除</button>
             </div>
-            <button onclick="showDonateModal()" class="btn-primary">+ 捐献 Token</button>
+            <button onclick="showDonateModal()" class="btn-primary">+ 添加 Token</button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 mb-4 text-xs">
+            <span style="color: var(--text-muted);">可见性</span>
+            <button type="button" class="filter-chip" data-group="visibility" data-value="" onclick="setTokenVisibility('')">全部</button>
+            <button type="button" class="filter-chip" data-group="visibility" data-value="public" onclick="setTokenVisibility('public')">公开</button>
+            <button type="button" class="filter-chip" data-group="visibility" data-value="private" onclick="setTokenVisibility('private')">私有</button>
+            <span class="ml-2" style="color: var(--text-muted);">状态</span>
+            <button type="button" class="filter-chip" data-group="status" data-value="" onclick="setTokenStatus('')">全部</button>
+            <button type="button" class="filter-chip" data-group="status" data-value="active" onclick="setTokenStatus('active')">有效</button>
+            <button type="button" class="filter-chip" data-group="status" data-value="invalid" onclick="setTokenStatus('invalid')">无效</button>
+            <button type="button" class="filter-chip" data-group="status" data-value="expired" onclick="setTokenStatus('expired')">已过期</button>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -2996,18 +3184,23 @@ def render_user_page(user) -> str:
             <div id="publicTokenPages" class="flex gap-1"></div>
           </div>
           <p class="mt-4 text-sm" style="color: var(--text-muted);">
-            💡 公开 Token 池由社区成员自愿贡献，供所有用户共享使用。您也可以切换到"我的 Token"捐献您的 Token。
+            💡 公开 Token 池由社区成员自愿贡献，供所有用户共享使用。您也可以切换到"我的 Token"添加您的 Token。
           </p>
         </div>
       </div>
     </div>
     <div id="panel-keys" class="tab-panel" style="display: none;">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-2">
           <h2 class="text-lg font-bold">我的 API Keys</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="keysSearch" placeholder="搜索 Key 或名称..." oninput="filterKeys()"
               class="px-3 py-2 rounded-lg text-sm w-40" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+            <select id="keysActiveFilter" onchange="filterKeys()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+              <option value="">全部状态</option>
+              <option value="true">启用</option>
+              <option value="false">停用</option>
+            </select>
             <select id="keysPageSize" onchange="filterKeys()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
               <option value="10" selected>10/页</option>
               <option value="20">20/页</option>
@@ -3016,6 +3209,12 @@ def render_user_page(user) -> str:
             <button onclick="refreshKeys()" class="btn btn-primary text-sm">刷新</button>
             <button onclick="generateKey()" class="btn-primary text-sm">+ 生成新 Key</button>
           </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mb-4 text-xs">
+          <span style="color: var(--text-muted);">状态</span>
+          <button type="button" class="filter-chip" data-group="keys-active" data-value="" onclick="setKeysActive('')">全部</button>
+          <button type="button" class="filter-chip" data-group="keys-active" data-value="true" onclick="setKeysActive('true')">启用</button>
+          <button type="button" class="filter-chip" data-group="keys-active" data-value="false" onclick="setKeysActive('false')">停用</button>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -3059,7 +3258,7 @@ def render_user_page(user) -> str:
       <!-- 模式选择 -->
       <div class="flex gap-1 mb-4 p-1 rounded-lg" style="background: var(--bg-input);">
         <button onclick="setDonateMode('private')" id="donateMode-private" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all active">🔐 个人使用</button>
-        <button onclick="setDonateMode('public')" id="donateMode-public" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all">🌐 公开捐献</button>
+        <button onclick="setDonateMode('public')" id="donateMode-public" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all">🌐 公开添加</button>
       </div>
 
       <!-- 模式说明 -->
@@ -3072,7 +3271,7 @@ def render_user_page(user) -> str:
         </ul>
       </div>
       <div id="donateDesc-public" class="mb-4 p-3 rounded-lg text-sm" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: none;">
-        <p class="font-medium text-green-400 mb-1">🌍 公开捐献模式</p>
+        <p class="font-medium text-green-400 mb-1">🌍 公开添加模式</p>
         <ul class="space-y-1" style="color: var(--text-muted);">
           <li>• Token 加入公共池供所有用户共享</li>
           <li>• 帮助社区其他成员使用服务</li>
@@ -3087,7 +3286,7 @@ def render_user_page(user) -> str:
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="donateAnonymous" class="w-4 h-4 rounded">
           <div>
-            <span class="font-medium">匿名捐献</span>
+            <span class="font-medium">匿名添加</span>
             <p class="text-xs mt-0.5" style="color: var(--text-muted);">勾选后其他用户将看不到您的用户名</p>
           </div>
         </label>
@@ -3150,6 +3349,9 @@ def render_user_page(user) -> str:
     .subtab.active {{ background: var(--primary); color: white; }}
     .donate-mode-btn {{ color: var(--text-muted); }}
     .donate-mode-btn.active {{ background: var(--primary); color: white; }}
+    .filter-chip {{ border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; background: var(--bg-input); color: var(--text-muted); transition: all 0.2s; }}
+    .filter-chip:hover {{ color: var(--text); }}
+    .filter-chip.active {{ background: var(--primary); color: white; border-color: var(--primary); }}
     details[open] .details-arrow {{ transform: rotate(180deg); }}
   </style>
   <script>
@@ -3164,6 +3366,25 @@ def render_user_page(user) -> str:
     let tokensSortField = 'id';
     let tokensSortAsc = false;
     let selectedTokenIds = new Set();
+
+    function buildQuery(params) {{
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {{
+        if (value === undefined || value === null || value === '') return;
+        qs.append(key, String(value));
+      }});
+      const str = qs.toString();
+      return str ? `?${{str}}` : '';
+    }}
+
+    async function fetchJson(url, options = {{}}) {{
+      const r = await fetch(url, options);
+      const text = await r.text();
+      let data = {{}};
+      try {{ data = text ? JSON.parse(text) : {{}}; }} catch (e) {{ data = {{}}; }}
+      if (!r.ok) throw data;
+      return data;
+    }}
 
     function renderTokenStatus(status) {{
       if (status === 'active') return '<span class="text-green-400">有效</span>';
@@ -3239,12 +3460,31 @@ def render_user_page(user) -> str:
 
     async function loadTokens() {{
       try {{
-        const r = await fetch('/user/api/tokens');
-        const d = await r.json();
+        const pageSize = parseInt(document.getElementById('tokensPageSize').value);
+        const search = document.getElementById('tokensSearch').value.trim();
+        const visibility = document.getElementById('tokenVisibilityFilter').value;
+        const status = document.getElementById('tokenStatusFilter').value;
+        const d = await fetchJson('/user/api/tokens' + buildQuery({{
+          page: tokensCurrentPage,
+          page_size: pageSize,
+          search,
+          visibility,
+          status,
+          sort_field: tokensSortField,
+          sort_order: tokensSortAsc ? 'asc' : 'desc'
+        }}));
         allTokens = d.tokens || [];
-        tokensCurrentPage = 1;
+        const total = d.pagination?.total ?? allTokens.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && tokensCurrentPage > totalPages) {{
+          tokensCurrentPage = totalPages;
+          return loadTokens();
+        }}
         selectedTokenIds.clear();
-        filterTokens();
+        renderTokenTable(allTokens);
+        renderTokensPagination(total, pageSize, totalPages);
+        updateBatchDeleteTokenBtn();
+        updateTokenChips();
       }} catch (e) {{ console.error(e); }}
     }}
 
@@ -3253,40 +3493,9 @@ def render_user_page(user) -> str:
     }}
 
     function filterTokens() {{
-      const search = document.getElementById('tokensSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('tokensPageSize').value);
-
-      // 筛选
-      let filtered = allTokens.filter(t =>
-        ('#' + t.id).toLowerCase().includes(search) ||
-        t.visibility.toLowerCase().includes(search) ||
-        t.status.toLowerCase().includes(search)
-      );
-
-      // 排序
-      filtered.sort((a, b) => {{
-        let va = a[tokensSortField], vb = b[tokensSortField];
-        if (tokensSortField === 'last_used') {{
-          va = va ? new Date(va).getTime() : 0;
-          vb = vb ? new Date(vb).getTime() : 0;
-        }} else if (tokensSortField === 'success_rate') {{
-          va = va || 0;
-          vb = vb || 0;
-        }}
-        if (va < vb) return tokensSortAsc ? -1 : 1;
-        if (va > vb) return tokensSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      // 分页
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (tokensCurrentPage > totalPages) tokensCurrentPage = totalPages;
-      const start = (tokensCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderTokenTable(paged);
-      renderTokensPagination(filtered.length, pageSize, totalPages);
-      updateBatchDeleteTokenBtn();
+      tokensCurrentPage = 1;
+      updateTokenChips();
+      loadTokens();
     }}
 
     function sortTokens(field) {{
@@ -3296,18 +3505,19 @@ def render_user_page(user) -> str:
         tokensSortField = field;
         tokensSortAsc = true;
       }}
-      filterTokens();
+      tokensCurrentPage = 1;
+      loadTokens();
     }}
 
     function goTokensPage(page) {{
       tokensCurrentPage = page;
-      filterTokens();
+      loadTokens();
     }}
 
     function renderTokenTable(tokens) {{
       const tb = document.getElementById('tokenTable');
       if (!tokens || !tokens.length) {{
-        tb.innerHTML = '<tr><td colspan="7" class="py-6 text-center" style="color: var(--text-muted);">暂无 Token，点击上方按钮捐献</td></tr>';
+        tb.innerHTML = '<tr><td colspan="7" class="py-6 text-center" style="color: var(--text-muted);">暂无 Token，点击上方按钮添加</td></tr>';
         document.getElementById('tokensPagination').style.display = 'none';
         document.getElementById('selectAllTokens').checked = false;
         return;
@@ -3427,12 +3637,31 @@ def render_user_page(user) -> str:
 
     async function loadKeys() {{
       try {{
-        const r = await fetch('/user/api/keys');
-        const d = await r.json();
+        const pageSize = parseInt(document.getElementById('keysPageSize').value);
+        const search = document.getElementById('keysSearch').value.trim();
+        const activeValue = document.getElementById('keysActiveFilter').value;
+        const isActive = activeValue === 'true' ? true : activeValue === 'false' ? false : undefined;
+        const d = await fetchJson('/user/api/keys' + buildQuery({{
+          page: keysCurrentPage,
+          page_size: pageSize,
+          search,
+          is_active: isActive,
+          sort_field: keysSortField,
+          sort_order: keysSortAsc ? 'asc' : 'desc'
+        }}));
         allKeys = d.keys || [];
-        keysCurrentPage = 1;
+        const total = d.pagination?.total ?? allKeys.length;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+        if (totalPages > 0 && keysCurrentPage > totalPages) {{
+          keysCurrentPage = totalPages;
+          return loadKeys();
+        }}
         selectedKeys.clear();
-        filterKeys();
+        renderKeysTable(allKeys);
+        renderKeysPagination(total, pageSize, totalPages);
+        updateBatchDeleteUI();
+        updateSelectAllCheckbox();
+        updateKeysChips();
       }} catch (e) {{ console.error(e); }}
     }}
 
@@ -3441,39 +3670,9 @@ def render_user_page(user) -> str:
     }}
 
     function filterKeys() {{
-      const search = document.getElementById('keysSearch').value.toLowerCase();
-      const pageSize = parseInt(document.getElementById('keysPageSize').value);
-
-      // 筛选
-      let filtered = allKeys.filter(k =>
-        k.key_prefix.toLowerCase().includes(search) ||
-        (k.name && k.name.toLowerCase().includes(search))
-      );
-
-      // 排序
-      filtered.sort((a, b) => {{
-        let va = a[keysSortField], vb = b[keysSortField];
-        if (keysSortField === 'created_at' || keysSortField === 'last_used') {{
-          va = va ? new Date(va).getTime() : 0;
-          vb = vb ? new Date(vb).getTime() : 0;
-        }} else if (keysSortField === 'name') {{
-          va = va || '';
-          vb = vb || '';
-        }}
-        if (va < vb) return keysSortAsc ? -1 : 1;
-        if (va > vb) return keysSortAsc ? 1 : -1;
-        return 0;
-      }});
-
-      // 分页
-      const totalPages = Math.ceil(filtered.length / pageSize) || 1;
-      if (keysCurrentPage > totalPages) keysCurrentPage = totalPages;
-      const start = (keysCurrentPage - 1) * pageSize;
-      const paged = filtered.slice(start, start + pageSize);
-
-      renderKeysTable(paged);
-      renderKeysPagination(filtered.length, pageSize, totalPages);
-      updateBatchDeleteUI();
+      keysCurrentPage = 1;
+      updateKeysChips();
+      loadKeys();
     }}
 
     function sortKeys(field) {{
@@ -3483,12 +3682,13 @@ def render_user_page(user) -> str:
         keysSortField = field;
         keysSortAsc = true;
       }}
-      filterKeys();
+      keysCurrentPage = 1;
+      loadKeys();
     }}
 
     function goKeysPage(page) {{
       keysCurrentPage = page;
-      filterKeys();
+      loadKeys();
     }}
 
     function renderKeysTable(keys) {{
@@ -3655,12 +3855,12 @@ def render_user_page(user) -> str:
       document.getElementById('copyStatus').style.display = 'none';
       const infoEl = document.getElementById('tokenSourceInfo');
       if (usePublicPool) {{
-        infoEl.innerHTML = '💡 <strong>提示：</strong>您尚未捐献 Token，此 Key 将使用公开 Token 池。捐献自己的 Token 可获得更稳定的服务。';
+        infoEl.innerHTML = '💡 <strong>提示：</strong>您尚未添加 Token，此 Key 将使用公开 Token 池。添加自己的 Token 可获得更稳定的服务。';
         infoEl.style.display = 'block';
         infoEl.style.background = 'rgba(245, 158, 11, 0.15)';
         infoEl.style.color = '#f59e0b';
       }} else {{
-        infoEl.innerHTML = '✅ <strong>提示：</strong>此 Key 将优先使用您捐献的私有 Token。';
+        infoEl.innerHTML = '✅ <strong>提示：</strong>此 Key 将优先使用您添加的私有 Token。';
         infoEl.style.display = 'block';
         infoEl.style.background = 'rgba(34, 197, 94, 0.15)';
         infoEl.style.color = '#22c55e';
@@ -3758,7 +3958,7 @@ def render_user_page(user) -> str:
       if (!userHasTokens) {{
         const proceed = await showConfirmModal({{
           title: '提示',
-          message: '您尚未捐献任何 Token。生成的 API Key 将使用公开 Token 池，可能会有配额限制。\\n\\n建议先捐献您的 Token 以获得更好的体验。\\n\\n是否继续生成？',
+          message: '您尚未添加任何 Token。生成的 API Key 将使用公开 Token 池，可能会有配额限制。\\n\\n建议先添加您的 Token 以获得更好的体验。\\n\\n是否继续生成？',
           icon: '💡',
           confirmText: '继续生成',
           danger: false
@@ -3955,7 +4155,7 @@ def render_user_page(user) -> str:
 
 def render_tokens_page(user=None) -> str:
     """Render the public token pool page."""
-    login_section = '<a href="/user" class="btn-primary">用户中心</a>' if user else '<a href="/login" class="btn-primary">登录捐献</a>'
+    login_section = '<a href="/user" class="btn-primary">用户中心</a>' if user else '<a href="/login" class="btn-primary">登录添加</a>'
     return f'''<!DOCTYPE html>
 <html lang="zh">
 <head>{COMMON_HEAD}</head>
@@ -3964,7 +4164,7 @@ def render_tokens_page(user=None) -> str:
   <main class="max-w-4xl mx-auto px-4 py-8">
     <div class="text-center mb-8">
       <h1 class="text-3xl font-bold mb-2">🌐 公开 Token 池</h1>
-      <p style="color: var(--text-muted);">社区捐献的 Refresh Token，供所有用户共享使用</p>
+      <p style="color: var(--text-muted);">社区添加的 Refresh Token，供所有用户共享使用</p>
     </div>
     <div class="grid grid-cols-2 gap-4 mb-8">
       <div class="card text-center">
@@ -3986,6 +4186,7 @@ def render_tokens_page(user=None) -> str:
           <thead>
             <tr style="border-bottom: 1px solid var(--border);">
               <th class="text-left py-3 px-3">#</th>
+              <th class="text-left py-3 px-3">贡献者</th>
               <th class="text-left py-3 px-3">成功率</th>
               <th class="text-left py-3 px-3">最后使用</th>
             </tr>
@@ -3998,7 +4199,7 @@ def render_tokens_page(user=None) -> str:
       <h3 class="font-bold mb-3">💡 如何使用</h3>
       <ol class="list-decimal list-inside space-y-2" style="color: var(--text-muted);">
         <li>通过 LinuxDo 或 GitHub 登录本站</li>
-        <li>在用户中心捐献你的 Refresh Token</li>
+        <li>在用户中心添加你的 Refresh Token</li>
         <li>选择"公开"以加入公共池</li>
         <li>生成 API Key (sk-xxx 格式)</li>
         <li>使用 API Key 调用本站接口</li>
@@ -4019,12 +4220,13 @@ def render_tokens_page(user=None) -> str:
         }} else {{ document.getElementById('avgRate').textContent = '-'; }}
         const tb = document.getElementById('poolTable');
         if (!tokens.length) {{
-          tb.innerHTML = '<tr><td colspan="3" class="py-6 text-center" style="color: var(--text-muted);">暂无公开 Token</td></tr>';
+          tb.innerHTML = '<tr><td colspan="4" class="py-6 text-center" style="color: var(--text-muted);">暂无公开 Token</td></tr>';
           return;
         }}
         tb.innerHTML = tokens.map((t, i) => `
           <tr style="border-bottom: 1px solid var(--border);">
             <td class="py-3 px-3">${{i + 1}}</td>
+            <td class="py-3 px-3">${{t.username || '匿名'}}</td>
             <td class="py-3 px-3"><span class="${{t.success_rate >= 80 ? 'text-green-400' : t.success_rate >= 50 ? 'text-yellow-400' : 'text-red-400'}}">${{t.success_rate}}%</span></td>
             <td class="py-3 px-3" style="color: var(--text-muted);">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
           </tr>
@@ -4108,7 +4310,7 @@ def render_login_page() -> str:
         <div class="grid grid-cols-2 gap-4 text-center text-sm">
           <div class="p-3 rounded-xl" style="background: var(--bg-main);">
             <div class="text-2xl mb-1">🎁</div>
-            <div style="color: var(--text-muted);">捐献 Token</div>
+            <div style="color: var(--text-muted);">添加 Token</div>
           </div>
           <div class="p-3 rounded-xl" style="background: var(--bg-main);">
             <div class="text-2xl mb-1">🔑</div>

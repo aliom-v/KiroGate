@@ -305,7 +305,7 @@ class SiteGuardMiddleware(BaseHTTPMiddleware):
             if is_api:
                 return JSONResponse(
                     status_code=503,
-                    content={"error": "Service temporarily unavailable"}
+                    content={"error": "服务暂时不可用"}
                 )
             # Return HTML maintenance page
             return HTMLResponse(
@@ -318,7 +318,7 @@ class SiteGuardMiddleware(BaseHTTPMiddleware):
         if metrics.is_ip_banned(client_ip):
             return JSONResponse(
                 status_code=403,
-                content={"error": "Access denied"}
+                content={"error": "访问被拒绝"}
             )
 
         return await call_next(request)

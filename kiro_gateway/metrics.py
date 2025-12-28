@@ -27,7 +27,7 @@ import os
 import sqlite3
 import time
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from threading import Lock
 
@@ -693,15 +693,28 @@ class PrometheusMetrics:
             except Exception as e:
                 logger.debug(f"Failed to save IP stats: {e}")
 
-    def get_ip_stats(self, limit: int = 100) -> List[Dict]:
-        """Get IP statistics sorted by request count."""
+    def get_ip_stats(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        search: str = "",
+        sort_field: str = "count",
+        sort_order: str = "desc"
+    ) -> Tuple[List[Dict], int]:
+        """Get IP statistics sorted by request count with pagination."""
         with self._lock:
             stats = [
                 {"ip": ip, "count": count, "lastSeen": self._ip_last_seen.get(ip, 0)}
                 for ip, count in self._ip_requests.items()
             ]
-            stats.sort(key=lambda x: x["count"], reverse=True)
-            return stats[:limit]
+            if search:
+                stats = [item for item in stats if search in item["ip"]]
+            sort_map = {"count": "count", "last_seen": "lastSeen", "ip": "ip"}
+            key_name = sort_map.get(sort_field, "count")
+            reverse = sort_order.lower() != "asc"
+            stats.sort(key=lambda x: x.get(key_name, 0), reverse=reverse)
+            total = len(stats)
+            return stats[offset:offset + limit], total
 
     def is_ip_banned(self, ip: str) -> bool:
         """Check if IP is banned."""
@@ -745,13 +758,31 @@ class PrometheusMetrics:
                 logger.error(f"Failed to unban IP: {e}")
                 return False
 
-    def get_blacklist(self) -> List[Dict]:
-        """Get IP blacklist."""
+    def get_blacklist(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        search: str = "",
+        sort_field: str = "banned_at",
+        sort_order: str = "desc"
+    ) -> Tuple[List[Dict], int]:
+        """Get IP blacklist with pagination."""
         with self._lock:
-            return [
+            items = [
                 {"ip": ip, "bannedAt": info["banned_at"], "reason": info["reason"]}
                 for ip, info in self._ip_blacklist.items()
             ]
+            if search:
+                items = [
+                    item for item in items
+                    if search in item["ip"] or search in (item["reason"] or "")
+                ]
+            sort_map = {"banned_at": "bannedAt", "ip": "ip"}
+            key_name = sort_map.get(sort_field, "bannedAt")
+            reverse = sort_order.lower() != "asc"
+            items.sort(key=lambda x: x.get(key_name, 0), reverse=reverse)
+            total = len(items)
+            return items[offset:offset + limit], total
 
     def is_site_enabled(self) -> bool:
         """Check if site is enabled."""

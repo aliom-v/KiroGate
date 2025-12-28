@@ -35,6 +35,7 @@ from loguru import logger
 from kiro_gateway.auth import KiroAuthManager
 from kiro_gateway.cache import ModelInfoCache
 from kiro_gateway.converters import build_kiro_payload, convert_anthropic_to_openai_request
+from kiro_gateway.config import settings
 from kiro_gateway.http_client import KiroHttpClient
 from kiro_gateway.models import (
     ChatCompletionRequest,
@@ -126,7 +127,7 @@ class RequestHandler:
         try:
             error_content = await response.aread()
         except Exception:
-            error_content = b"Unknown error"
+            error_content = "未知错误".encode("utf-8")
 
         await http_client.close()
         error_text = error_content.decode('utf-8', errors='replace')
@@ -563,4 +564,8 @@ class RequestHandler:
             RequestHandler.log_error(endpoint_name, error_msg, 500)
             if debug_logger:
                 debug_logger.flush_on_error(500, error_msg)
-            raise HTTPException(status_code=500, detail=f"服务器内部错误: {error_msg}")
+            if settings.debug_mode == "off":
+                detail = "服务器内部错误"
+            else:
+                detail = f"服务器内部错误: {error_msg}"
+            raise HTTPException(status_code=500, detail=detail)

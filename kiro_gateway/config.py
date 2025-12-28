@@ -221,6 +221,22 @@ class Settings(BaseSettings):
     # Admin Session 有效期（秒）
     admin_session_max_age: int = Field(default=86400, alias="ADMIN_SESSION_MAX_AGE")
 
+    # Admin Session SameSite 策略: lax/strict/none
+    admin_cookie_samesite: str = Field(default="strict", alias="ADMIN_COOKIE_SAMESITE")
+
+    # ==================================================================================================
+    # Cookie & CSRF 配置
+    # ==================================================================================================
+
+    # 是否强制 secure cookie（None 表示自动按请求协议判断）
+    cookie_secure: Optional[bool] = Field(default=None, alias="COOKIE_SECURE")
+
+    # OAuth 临时 state cookie 的 SameSite 策略
+    oauth_state_cookie_samesite: str = Field(default="lax", alias="OAUTH_STATE_COOKIE_SAMESITE")
+
+    # 是否启用 CSRF 保护（仅管理/用户端接口）
+    csrf_enabled: bool = Field(default=True, alias="CSRF_ENABLED")
+
     # ==================================================================================================
     # OAuth2 LinuxDo 配置
     # ==================================================================================================
@@ -257,6 +273,9 @@ class Settings(BaseSettings):
     # 用户 Session 有效期（秒），默认7天
     user_session_max_age: int = Field(default=604800, alias="USER_SESSION_MAX_AGE")
 
+    # 用户 Session SameSite 策略: lax/strict/none
+    user_cookie_samesite: str = Field(default="strict", alias="USER_COOKIE_SAMESITE")
+
     # Token 加密密钥（32字节）
     token_encrypt_key: str = Field(default="kirogate_token_encrypt_key_32b!", alias="TOKEN_ENCRYPT_KEY")
 
@@ -284,6 +303,16 @@ class Settings(BaseSettings):
         v = v.lower()
         if v not in valid_modes:
             return "off"
+        return v
+
+    @field_validator("admin_cookie_samesite", "user_cookie_samesite", "oauth_state_cookie_samesite")
+    @classmethod
+    def validate_cookie_samesite(cls, v: str) -> str:
+        """验证 SameSite 值。"""
+        valid = {"lax", "strict", "none"}
+        v = v.lower()
+        if v not in valid:
+            return "lax"
         return v
 
 

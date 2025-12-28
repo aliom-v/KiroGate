@@ -122,6 +122,7 @@ class UserDatabase:
                     refresh_token_encrypted TEXT NOT NULL,
                     token_hash TEXT UNIQUE NOT NULL,
                     visibility TEXT DEFAULT 'private',
+                    is_anonymous INTEGER DEFAULT 0,
                     status TEXT DEFAULT 'active',
                     success_count INTEGER DEFAULT 0,
                     fail_count INTEGER DEFAULT 0,
@@ -160,7 +161,37 @@ class UserDatabase:
                     FOREIGN KEY (token_id) REFERENCES tokens(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_health_token ON token_health(token_id);
+
+                -- Site announcements
+                CREATE TABLE IF NOT EXISTS announcements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content TEXT NOT NULL,
+                    is_active INTEGER DEFAULT 1,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active, updated_at);
+
+                -- Announcement status per user
+                CREATE TABLE IF NOT EXISTS announcement_status (
+                    user_id INTEGER NOT NULL,
+                    announcement_id INTEGER NOT NULL,
+                    is_read INTEGER DEFAULT 0,
+                    is_dismissed INTEGER DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, announcement_id),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_announcement_status_user ON announcement_status(user_id);
+                CREATE INDEX IF NOT EXISTS idx_announcement_status_announcement ON announcement_status(announcement_id);
             ''')
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(tokens)")}
+            if "is_anonymous" not in columns:
+                conn.execute(
+                    "ALTER TABLE tokens ADD COLUMN is_anonymous INTEGER DEFAULT 0"
+                )
             conn.commit()
         logger.info(f"User database initialized: {self._db_path}")
 
@@ -214,6 +245,117 @@ class UserDatabase:
                     last_login=now
                 )
 
+    # ==================== Announcement Methods ====================
+
+    def _row_to_announcement(self, row: sqlite3.Row) -> Dict:
+        """Convert database row to announcement dict."""
+        return {
+            "id": row["id"],
+            "content": row["content"],
+            "is_active": bool(row["is_active"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def get_latest_announcement(self) -> Optional[Dict]:
+        """Get the latest announcement (active or inactive)."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM announcements ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            return self._row_to_announcement(row) if row else None
+
+    def get_active_announcement(self) -> Optional[Dict]:
+        """Get the latest active announcement."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM announcements WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1"
+            ).fetchone()
+            return self._row_to_announcement(row) if row else None
+
+    def deactivate_announcements(self) -> None:
+        """Deactivate all announcements."""
+        with self._lock:
+            with self._get_conn() as conn:
+                conn.execute("UPDATE announcements SET is_active = 0 WHERE is_active = 1")
+
+    def create_announcement(self, content: str, is_active: bool) -> int:
+        """Create a new announcement."""
+        now = int(time.time() * 1000)
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.execute(
+                    """INSERT INTO announcements (content, is_active, created_at, updated_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (content, 1 if is_active else 0, now, now)
+                )
+                return cursor.lastrowid
+
+    def get_announcement_status(self, user_id: int, announcement_id: int) -> Dict:
+        """Get announcement status for a user."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                """SELECT is_read, is_dismissed
+                   FROM announcement_status
+                   WHERE user_id = ? AND announcement_id = ?""",
+                (user_id, announcement_id)
+            ).fetchone()
+            if not row:
+                return {"is_read": False, "is_dismissed": False}
+            return {
+                "is_read": bool(row["is_read"]),
+                "is_dismissed": bool(row["is_dismissed"]),
+            }
+
+    def set_announcement_status(
+        self,
+        user_id: int,
+        announcement_id: int,
+        is_read: Optional[bool] = None,
+        is_dismissed: Optional[bool] = None
+    ) -> None:
+        """Update announcement status for a user."""
+        now = int(time.time() * 1000)
+        with self._lock:
+            with self._get_conn() as conn:
+                existing = conn.execute(
+                    """SELECT is_read, is_dismissed
+                       FROM announcement_status
+                       WHERE user_id = ? AND announcement_id = ?""",
+                    (user_id, announcement_id)
+                ).fetchone()
+                if existing:
+                    new_is_read = existing["is_read"] if is_read is None else (1 if is_read else 0)
+                    new_is_dismissed = existing["is_dismissed"] if is_dismissed is None else (1 if is_dismissed else 0)
+                    conn.execute(
+                        """UPDATE announcement_status
+                           SET is_read = ?, is_dismissed = ?, updated_at = ?
+                           WHERE user_id = ? AND announcement_id = ?""",
+                        (new_is_read, new_is_dismissed, now, user_id, announcement_id)
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO announcement_status
+                           (user_id, announcement_id, is_read, is_dismissed, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            user_id,
+                            announcement_id,
+                            1 if is_read else 0,
+                            1 if is_dismissed else 0,
+                            now,
+                            now
+                        )
+                    )
+
+    def mark_announcement_read(self, user_id: int, announcement_id: int) -> None:
+        """Mark announcement as read."""
+        self.set_announcement_status(user_id, announcement_id, is_read=True)
+
+    def mark_announcement_dismissed(self, user_id: int, announcement_id: int) -> None:
+        """Mark announcement as dismissed."""
+        self.set_announcement_status(user_id, announcement_id, is_dismissed=True)
+
     def get_user(self, user_id: int) -> Optional[User]:
         """Get user by ID."""
         with self._get_conn() as conn:
@@ -251,19 +393,80 @@ class UserDatabase:
             with self._get_conn() as conn:
                 conn.execute("UPDATE users SET is_banned = ? WHERE id = ?", (1 if is_banned else 0, user_id))
 
-    def get_all_users(self, limit: int = 100, offset: int = 0) -> List[User]:
-        """Get all users with pagination."""
+    def get_all_users(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        search: str = "",
+        is_admin: Optional[bool] = None,
+        is_banned: Optional[bool] = None,
+        sort_field: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[User]:
+        """Get users with pagination, filters, and sorting."""
+        where: list[str] = []
+        params: list = []
+        if search:
+            like = f"%{search}%"
+            where.append(
+                "(username LIKE ? OR CAST(id AS TEXT) LIKE ? OR linuxdo_id LIKE ? OR github_id LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        if is_admin is not None:
+            where.append("is_admin = ?")
+            params.append(1 if is_admin else 0)
+        if is_banned is not None:
+            where.append("is_banned = ?")
+            params.append(1 if is_banned else 0)
+
+        allowed_sort = {
+            "id": "id",
+            "username": "username",
+            "created_at": "created_at",
+            "last_login": "last_login",
+            "trust_level": "trust_level",
+            "token_count": "(SELECT COUNT(*) FROM tokens t WHERE t.user_id = users.id)",
+        }
+        sort_column = allowed_sort.get(sort_field, "created_at")
+        order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+        query = "SELECT * FROM users"
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        query += f" ORDER BY {sort_column} {order} LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
         with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset)
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
             return [self._row_to_user(r) for r in rows]
 
-    def get_user_count(self) -> int:
-        """Get total user count."""
+    def get_user_count(
+        self,
+        search: str = "",
+        is_admin: Optional[bool] = None,
+        is_banned: Optional[bool] = None
+    ) -> int:
+        """Get total user count with optional filters."""
+        where: list[str] = []
+        params: list = []
+        if search:
+            like = f"%{search}%"
+            where.append(
+                "(username LIKE ? OR CAST(id AS TEXT) LIKE ? OR linuxdo_id LIKE ? OR github_id LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        if is_admin is not None:
+            where.append("is_admin = ?")
+            params.append(1 if is_admin else 0)
+        if is_banned is not None:
+            where.append("is_banned = ?")
+            params.append(1 if is_banned else 0)
+
+        query = "SELECT COUNT(*) FROM users"
+        if where:
+            query += " WHERE " + " AND ".join(where)
         with self._get_conn() as conn:
-            return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            return conn.execute(query, params).fetchone()[0]
 
     def _row_to_user(self, row: sqlite3.Row) -> User:
         """Convert database row to User object."""
@@ -298,7 +501,8 @@ class UserDatabase:
         self,
         user_id: int,
         refresh_token: str,
-        visibility: str = "private"
+        visibility: str = "private",
+        anonymous: bool = False
     ) -> Tuple[bool, str]:
         """
         Donate a refresh token.
@@ -309,6 +513,7 @@ class UserDatabase:
         token_hash = self._hash_token(refresh_token)
         encrypted = self._encrypt_token(refresh_token)
         now = int(time.time() * 1000)
+        is_anonymous = 1 if visibility == "public" and anonymous else 0
 
         with self._lock:
             with self._get_conn() as conn:
@@ -321,20 +526,84 @@ class UserDatabase:
 
                 conn.execute(
                     """INSERT INTO tokens
-                       (user_id, refresh_token_encrypted, token_hash, visibility, created_at)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (user_id, encrypted, token_hash, visibility, now)
+                       (user_id, refresh_token_encrypted, token_hash, visibility, is_anonymous, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (user_id, encrypted, token_hash, visibility, is_anonymous, now)
                 )
-                return True, "Token 捐献成功"
+                return True, "Token 添加成功"
 
-    def get_user_tokens(self, user_id: int) -> List[DonatedToken]:
-        """Get all tokens for a user."""
+    def get_user_tokens(
+        self,
+        user_id: int,
+        limit: Optional[int] = 100,
+        offset: int = 0,
+        search: str = "",
+        status: Optional[str] = None,
+        visibility: Optional[str] = None,
+        sort_field: str = "id",
+        sort_order: str = "desc"
+    ) -> List[DonatedToken]:
+        """Get tokens for a user with pagination and filters."""
+        where = ["user_id = ?"]
+        params: list = [user_id]
+        if search:
+            like = f"%{search}%"
+            where.append("(CAST(id AS TEXT) LIKE ? OR status LIKE ? OR visibility LIKE ?)")
+            params.extend([like, like, like])
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        if visibility:
+            where.append("visibility = ?")
+            params.append(visibility)
+
+        allowed_sort = {
+            "id": "id",
+            "visibility": "visibility",
+            "status": "status",
+            "last_used": "last_used",
+            "created_at": "created_at",
+            "success_rate": (
+                "CASE WHEN (success_count + fail_count) > 0 "
+                "THEN CAST(success_count AS REAL) / (success_count + fail_count) "
+                "ELSE 1.0 END"
+            ),
+        }
+        sort_column = allowed_sort.get(sort_field, "id")
+        order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+        query = "SELECT * FROM tokens WHERE " + " AND ".join(where)
+        query += f" ORDER BY {sort_column} {order}"
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM tokens WHERE user_id = ? ORDER BY created_at DESC",
-                (user_id,)
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
             return [self._row_to_token(r) for r in rows]
+
+    def get_user_tokens_count(
+        self,
+        user_id: int,
+        search: str = "",
+        status: Optional[str] = None,
+        visibility: Optional[str] = None
+    ) -> int:
+        """Get token count for a user with optional filters."""
+        where = ["user_id = ?"]
+        params: list = [user_id]
+        if search:
+            like = f"%{search}%"
+            where.append("(CAST(id AS TEXT) LIKE ? OR status LIKE ? OR visibility LIKE ?)")
+            params.extend([like, like, like])
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        if visibility:
+            where.append("visibility = ?")
+            params.append(visibility)
+        query = "SELECT COUNT(*) FROM tokens WHERE " + " AND ".join(where)
+        with self._get_conn() as conn:
+            return conn.execute(query, params).fetchone()[0]
 
     def get_public_tokens(self, status: str = "active") -> List[DonatedToken]:
         """Get all public tokens with given status."""
@@ -532,14 +801,65 @@ class UserDatabase:
                 return api_key.user_id, api_key
         return None
 
-    def get_user_api_keys(self, user_id: int) -> List[APIKey]:
-        """Get all API keys for a user."""
+    def get_user_api_keys(
+        self,
+        user_id: int,
+        limit: Optional[int] = 100,
+        offset: int = 0,
+        search: str = "",
+        is_active: Optional[bool] = None,
+        sort_field: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[APIKey]:
+        """Get API keys for a user with pagination and filters."""
+        where = ["user_id = ?"]
+        params: list = [user_id]
+        if search:
+            like = f"%{search}%"
+            where.append("(name LIKE ? OR key_prefix LIKE ?)")
+            params.extend([like, like])
+        if is_active is not None:
+            where.append("is_active = ?")
+            params.append(1 if is_active else 0)
+
+        allowed_sort = {
+            "key_prefix": "key_prefix",
+            "name": "name",
+            "request_count": "request_count",
+            "last_used": "last_used",
+            "created_at": "created_at",
+        }
+        sort_column = allowed_sort.get(sort_field, "created_at")
+        order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+        query = "SELECT * FROM api_keys WHERE " + " AND ".join(where)
+        query += f" ORDER BY {sort_column} {order}"
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC",
-                (user_id,)
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
             return [self._row_to_apikey(r) for r in rows]
+
+    def get_user_api_keys_count(
+        self,
+        user_id: int,
+        search: str = "",
+        is_active: Optional[bool] = None
+    ) -> int:
+        """Get API key count for a user with optional filters."""
+        where = ["user_id = ?"]
+        params: list = [user_id]
+        if search:
+            like = f"%{search}%"
+            where.append("(name LIKE ? OR key_prefix LIKE ?)")
+            params.extend([like, like])
+        if is_active is not None:
+            where.append("is_active = ?")
+            params.append(1 if is_active else 0)
+        query = "SELECT COUNT(*) FROM api_keys WHERE " + " AND ".join(where)
+        with self._get_conn() as conn:
+            return conn.execute(query, params).fetchone()[0]
 
     def revoke_api_key(self, key_id: int, user_id: Optional[int] = None) -> bool:
         """Revoke an API key. If user_id provided, verify ownership."""
@@ -626,14 +946,6 @@ class UserDatabase:
 
     # ==================== Admin Management Methods ====================
 
-    def get_all_users(self) -> List[User]:
-        """Get all registered users."""
-        with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM users ORDER BY created_at DESC"
-            ).fetchall()
-            return [self._row_to_user(r) for r in rows]
-
     def set_user_banned(self, user_id: int, banned: bool) -> bool:
         """Ban or unban a user."""
         with self._lock:
@@ -658,7 +970,7 @@ class UserDatabase:
             return [
                 {
                     "id": r["id"],
-                    "username": r["username"] or "Anonymous",
+                    "username": "匿名" if r["is_anonymous"] else (r["username"] or "匿名"),
                     "status": r["status"],
                     "success_count": r["success_count"],
                     "fail_count": r["fail_count"],
@@ -668,15 +980,61 @@ class UserDatabase:
                 for r in rows
             ]
 
-    def get_all_tokens_with_users(self) -> List[Dict]:
-        """Get all tokens with user information for admin panel."""
+    def get_all_tokens_with_users(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        search: str = "",
+        visibility: Optional[str] = None,
+        status: Optional[str] = None,
+        user_id: Optional[int] = None,
+        sort_field: str = "created_at",
+        sort_order: str = "desc"
+    ) -> List[Dict]:
+        """Get tokens with user info for admin panel (pagination + filters)."""
+        where: list[str] = []
+        params: list = []
+        if search:
+            like = f"%{search}%"
+            where.append("(u.username LIKE ? OR CAST(t.user_id AS TEXT) LIKE ? OR CAST(t.id AS TEXT) LIKE ?)")
+            params.extend([like, like, like])
+        if visibility:
+            where.append("t.visibility = ?")
+            params.append(visibility)
+        if status:
+            where.append("t.status = ?")
+            params.append(status)
+        if user_id is not None:
+            where.append("t.user_id = ?")
+            params.append(user_id)
+
+        allowed_sort = {
+            "id": "t.id",
+            "username": "u.username",
+            "created_at": "t.created_at",
+            "last_used": "t.last_used",
+            "success_rate": (
+                "CASE WHEN (t.success_count + t.fail_count) > 0 "
+                "THEN CAST(t.success_count AS REAL) / (t.success_count + t.fail_count) "
+                "ELSE 1.0 END"
+            ),
+            "use_count": "(t.success_count + t.fail_count)",
+        }
+        sort_column = allowed_sort.get(sort_field, "t.created_at")
+        order = "ASC" if sort_order.lower() == "asc" else "DESC"
+
+        query = (
+            "SELECT t.*, u.username "
+            "FROM tokens t "
+            "LEFT JOIN users u ON t.user_id = u.id"
+        )
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        query += f" ORDER BY {sort_column} {order} LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
         with self._get_conn() as conn:
-            rows = conn.execute(
-                """SELECT t.*, u.username
-                   FROM tokens t
-                   LEFT JOIN users u ON t.user_id = u.id
-                   ORDER BY t.created_at DESC"""
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
             return [
                 {
                     "id": r["id"],
@@ -692,6 +1050,51 @@ class UserDatabase:
                 }
                 for r in rows
             ]
+
+    def get_tokens_count(
+        self,
+        search: str = "",
+        visibility: Optional[str] = None,
+        status: Optional[str] = None,
+        user_id: Optional[int] = None
+    ) -> int:
+        """Get token count with optional filters."""
+        where: list[str] = []
+        params: list = []
+        if search:
+            like = f"%{search}%"
+            where.append("(u.username LIKE ? OR CAST(t.user_id AS TEXT) LIKE ? OR CAST(t.id AS TEXT) LIKE ?)")
+            params.extend([like, like, like])
+        if visibility:
+            where.append("t.visibility = ?")
+            params.append(visibility)
+        if status:
+            where.append("t.status = ?")
+            params.append(status)
+        if user_id is not None:
+            where.append("t.user_id = ?")
+            params.append(user_id)
+
+        query = (
+            "SELECT COUNT(*) "
+            "FROM tokens t "
+            "LEFT JOIN users u ON t.user_id = u.id"
+        )
+        if where:
+            query += " WHERE " + " AND ".join(where)
+        with self._get_conn() as conn:
+            return conn.execute(query, params).fetchone()[0]
+
+    def get_tokens_success_rate_avg(self) -> float:
+        """Get average success rate across all tokens."""
+        query = (
+            "SELECT AVG(CASE WHEN (success_count + fail_count) > 0 "
+            "THEN CAST(success_count AS REAL) / (success_count + fail_count) "
+            "ELSE 1.0 END) FROM tokens"
+        )
+        with self._get_conn() as conn:
+            result = conn.execute(query).fetchone()[0]
+            return float(result) if result is not None else 0.0
 
     def admin_delete_token(self, token_id: int) -> bool:
         """Admin: delete any token regardless of ownership."""
