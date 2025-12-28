@@ -190,7 +190,7 @@ class UserDatabase:
     ) -> User:
         """Create a new user."""
         if not linuxdo_id and not github_id:
-            raise ValueError("Either linuxdo_id or github_id is required")
+            raise ValueError("必须提供 linuxdo_id 或 github_id")
 
         now = int(time.time() * 1000)
         with self._lock:
@@ -317,7 +317,7 @@ class UserDatabase:
                     "SELECT id FROM tokens WHERE token_hash = ?", (token_hash,)
                 ).fetchone()
                 if existing:
-                    return False, "Token already exists"
+                    return False, "Token 已存在"
 
                 conn.execute(
                     """INSERT INTO tokens
@@ -325,7 +325,7 @@ class UserDatabase:
                        VALUES (?, ?, ?, ?, ?)""",
                     (user_id, encrypted, token_hash, visibility, now)
                 )
-                return True, "Token donated successfully"
+                return True, "Token 捐献成功"
 
     def get_user_tokens(self, user_id: int) -> List[DonatedToken]:
         """Get all tokens for a user."""
@@ -643,6 +643,30 @@ class UserDatabase:
                     (1 if banned else 0, user_id)
                 )
                 return True
+
+    def get_public_tokens_with_users(self, status: str = "active") -> List[Dict]:
+        """Get public tokens with user information for user page."""
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """SELECT t.*, u.username
+                   FROM tokens t
+                   LEFT JOIN users u ON t.user_id = u.id
+                   WHERE t.visibility = 'public' AND t.status = ?
+                   ORDER BY t.success_count DESC""",
+                (status,)
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "username": r["username"] or "Anonymous",
+                    "status": r["status"],
+                    "success_count": r["success_count"],
+                    "fail_count": r["fail_count"],
+                    "success_rate": r["success_count"] / max(r["success_count"] + r["fail_count"], 1),
+                    "last_used": r["last_used"],
+                }
+                for r in rows
+            ]
 
     def get_all_tokens_with_users(self) -> List[Dict]:
         """Get all tokens with user information for admin panel."""

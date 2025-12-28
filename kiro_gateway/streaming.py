@@ -85,7 +85,7 @@ async def _read_chunk_with_timeout(
             timeout=timeout
         )
     except asyncio.TimeoutError:
-        raise StreamReadTimeoutError(f"Stream read timeout after {timeout}s")
+        raise StreamReadTimeoutError(f"流式读取在 {timeout}s 后超时")
 
 
 def _calculate_usage_tokens(
@@ -261,7 +261,7 @@ async def stream_kiro_to_openai_internal(
             )
         except asyncio.TimeoutError:
             logger.warning(f"First token timeout after {adaptive_first_token_timeout}s (model: {model})")
-            raise FirstTokenTimeoutError(f"No response within {adaptive_first_token_timeout} seconds")
+            raise FirstTokenTimeoutError(f"在 {adaptive_first_token_timeout}s 内未收到响应")
         except StopAsyncIteration:
             logger.debug("Empty response from Kiro API")
             yield "data: [DONE]\n\n"
@@ -530,7 +530,7 @@ async def stream_with_first_token_retry(
                     error_content = await response.aread()
                     error_text = error_content.decode('utf-8', errors='replace')
                 except Exception:
-                    error_text = "Unknown error"
+                    error_text = "未知错误"
                 
                 try:
                     await response.aclose()
@@ -540,7 +540,7 @@ async def stream_with_first_token_retry(
                 logger.error(f"Error from Kiro API: {response.status_code} - {error_text}")
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"Upstream API error: {error_text}"
+                    detail=f"上游 API 错误: {error_text}"
                 )
             
             # Пытаемся стримить с таймаутом на первый токен
@@ -587,7 +587,7 @@ async def stream_with_first_token_retry(
     logger.error(f"All {max_retries} attempts failed due to first token timeout")
     raise HTTPException(
         status_code=504,
-        detail=f"Model did not respond within {first_token_timeout}s after {max_retries} attempts. Please try again."
+        detail=f"模型在 {max_retries} 次尝试后仍未在 {first_token_timeout}s 内响应，请稍后再试。"
     )
 
 

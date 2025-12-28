@@ -40,6 +40,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from loguru import logger
 
+from kiro_gateway.middleware import get_timestamp
 from kiro_gateway.config import (
     PROXY_API_KEY,
     AVAILABLE_MODELS,
@@ -137,8 +138,8 @@ async def _parse_auth_header(auth_header: str, request: Request = None) -> tuple
         HTTPException: 401 if key is invalid or missing
     """
     if not auth_header or not auth_header.startswith("Bearer "):
-        logger.warning("Missing or invalid Authorization header format")
-        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+        logger.warning(f"[{get_timestamp()}] 缺少或无效的 Authorization 头格式")
+        raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
     token = auth_header[7:]  # Remove "Bearer "
 
@@ -149,21 +150,21 @@ async def _parse_auth_header(auth_header: str, request: Request = None) -> tuple
 
         result = user_db.verify_api_key(token)
         if not result:
-            logger.warning(f"Invalid user API key: {_mask_token(token)}")
-            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+            logger.warning(f"[{get_timestamp()}] 用户 API Key 无效: {_mask_token(token)}")
+            raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
         user_id, api_key = result
 
         # Check if user is banned
         user = user_db.get_user(user_id)
         if not user or user.is_banned:
-            logger.warning(f"Banned user attempted to use API key: user_id={user_id}")
-            raise HTTPException(status_code=403, detail="User is banned")
+            logger.warning(f"[{get_timestamp()}] 被封禁用户尝试使用 API Key: 用户ID={user_id}")
+            raise HTTPException(status_code=403, detail="用户已被封禁")
 
         # Get best token for this user
         try:
             donated_token, auth_manager = await token_allocator.get_best_token(user_id)
-            logger.debug(f"User API key mode: user_id={user_id}, using token_id={donated_token.id}")
+            logger.debug(f"[{get_timestamp()}] 用户 API Key 模式: 用户ID={user_id}, Token ID={donated_token.id}")
 
             # Store token_id in request state for usage tracking
             if request:
@@ -173,8 +174,8 @@ async def _parse_auth_header(auth_header: str, request: Request = None) -> tuple
 
             return token, auth_manager, user_id, api_key.id
         except NoTokenAvailable as e:
-            logger.warning(f"No token available for user {user_id}: {e}")
-            raise HTTPException(status_code=503, detail="No tokens available for this user")
+            logger.warning(f"[{get_timestamp()}] 用户可用 Token 不足: 用户ID={user_id}, 错误={e}")
+            raise HTTPException(status_code=503, detail="该用户暂无可用的 Token")
 
     # Check if token contains ':' (multi-tenant format)
     if ':' in token:
@@ -184,11 +185,11 @@ async def _parse_auth_header(auth_header: str, request: Request = None) -> tuple
 
         # Verify proxy key
         if not secrets.compare_digest(proxy_key, PROXY_API_KEY):
-            logger.warning(f"Invalid proxy key in multi-tenant format: {_mask_token(proxy_key)}")
-            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+            logger.warning(f"[{get_timestamp()}] 多租户模式下 Proxy Key 无效: {_mask_token(proxy_key)}")
+            raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
         # Get or create AuthManager for this refresh token
-        logger.debug(f"Multi-tenant mode: using custom refresh token {_mask_token(refresh_token)}")
+        logger.debug(f"[{get_timestamp()}] 多租户模式: 使用自定义 Refresh Token {_mask_token(refresh_token)}")
         auth_manager = await auth_cache.get_or_create(
             refresh_token=refresh_token,
             region=settings.region,
@@ -198,11 +199,11 @@ async def _parse_auth_header(auth_header: str, request: Request = None) -> tuple
     else:
         # Traditional mode: verify entire token as PROXY_API_KEY
         if not secrets.compare_digest(token, PROXY_API_KEY):
-            logger.warning("Invalid API key in traditional format")
-            raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+            logger.warning(f"[{get_timestamp()}] 传统模式下 API Key 无效")
+            raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
         # Return None to indicate using global AuthManager
-        logger.debug("Traditional mode: using global AuthManager")
+        logger.debug(f"[{get_timestamp()}] 传统模式: 使用全局 AuthManager")
         return token, None, None, None
 
 
@@ -273,20 +274,20 @@ async def verify_anthropic_api_key(
 
             result = user_db.verify_api_key(x_api_key)
             if not result:
-                logger.warning(f"Invalid user API key in x-api-key: {_mask_token(x_api_key)}")
-                raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+                logger.warning(f"[{get_timestamp()}] x-api-key 中的用户 API Key 无效: {_mask_token(x_api_key)}")
+                raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
             user_id, api_key = result
 
             # Check if user is banned
             user = user_db.get_user(user_id)
             if not user or user.is_banned:
-                logger.warning(f"Banned user attempted to use API key: user_id={user_id}")
-                raise HTTPException(status_code=403, detail="User is banned")
+                logger.warning(f"[{get_timestamp()}] 被封禁用户尝试使用 API Key: 用户ID={user_id}")
+                raise HTTPException(status_code=403, detail="用户已被封禁")
 
             try:
                 donated_token, auth_manager = await token_allocator.get_best_token(user_id)
-                logger.debug(f"User API key mode (x-api-key): user_id={user_id}, using token_id={donated_token.id}")
+                logger.debug(f"[{get_timestamp()}] x-api-key 用户 API Key 模式: 用户ID={user_id}, Token ID={donated_token.id}")
 
                 request.state.donated_token_id = donated_token.id
                 request.state.api_key_id = api_key.id
@@ -294,8 +295,8 @@ async def verify_anthropic_api_key(
 
                 return auth_manager
             except NoTokenAvailable as e:
-                logger.warning(f"No token available for user {user_id}: {e}")
-                raise HTTPException(status_code=503, detail="No tokens available for this user")
+                logger.warning(f"[{get_timestamp()}] 用户可用 Token 不足: 用户ID={user_id}, 错误={e}")
+                raise HTTPException(status_code=503, detail="该用户暂无可用的 Token")
 
         # Check if x-api-key contains ':' (multi-tenant format)
         if ':' in x_api_key:
@@ -305,11 +306,11 @@ async def verify_anthropic_api_key(
 
             # Verify proxy key
             if not secrets.compare_digest(proxy_key, PROXY_API_KEY):
-                logger.warning(f"Invalid proxy key in x-api-key: {_mask_token(proxy_key)}")
-                raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+                logger.warning(f"[{get_timestamp()}] x-api-key 多租户模式下 Proxy Key 无效: {_mask_token(proxy_key)}")
+                raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
             # Get or create AuthManager for this refresh token
-            logger.debug(f"Multi-tenant mode (x-api-key): using custom refresh token {_mask_token(refresh_token)}")
+            logger.debug(f"[{get_timestamp()}] x-api-key 多租户模式: 使用自定义 Refresh Token {_mask_token(refresh_token)}")
             auth_manager = await auth_cache.get_or_create(
                 refresh_token=refresh_token,
                 region=settings.region,
@@ -319,22 +320,22 @@ async def verify_anthropic_api_key(
         else:
             # Traditional mode: verify entire x-api-key as PROXY_API_KEY
             if secrets.compare_digest(x_api_key, PROXY_API_KEY):
-                logger.debug("Traditional mode (x-api-key): using global AuthManager")
+                logger.debug(f"[{get_timestamp()}] x-api-key 传统模式: 使用全局 AuthManager")
                 return request.app.state.auth_manager
 
     # Try Authorization header (OpenAI format)
     if auth_header:
         return await verify_api_key(request, auth_header)
 
-    logger.warning("Access attempt with invalid API key (Anthropic endpoint).")
-    raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+    logger.warning(f"[{get_timestamp()}] Anthropic 端点访问时 API Key 无效")
+    raise HTTPException(status_code=401, detail="API Key 无效或缺失")
 
 
 # --- Router ---
 router = APIRouter()
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root():
     """
     Home page with dashboard.
@@ -360,7 +361,7 @@ async def api_root():
     }
 
 
-@router.get("/docs", response_class=HTMLResponse)
+@router.get("/docs", response_class=HTMLResponse, include_in_schema=False)
 async def docs_page():
     """
     API documentation page.
@@ -371,7 +372,7 @@ async def docs_page():
     return HTMLResponse(content=render_docs_page())
 
 
-@router.get("/playground", response_class=HTMLResponse)
+@router.get("/playground", response_class=HTMLResponse, include_in_schema=False)
 async def playground_page():
     """
     API playground page.
@@ -382,7 +383,7 @@ async def playground_page():
     return HTMLResponse(content=render_playground_page())
 
 
-@router.get("/deploy", response_class=HTMLResponse)
+@router.get("/deploy", response_class=HTMLResponse, include_in_schema=False)
 async def deploy_page():
     """
     Deployment guide page.
@@ -393,7 +394,7 @@ async def deploy_page():
     return HTMLResponse(content=render_deploy_page())
 
 
-@router.get("/status", response_class=HTMLResponse)
+@router.get("/status", response_class=HTMLResponse, include_in_schema=False)
 async def status_page(request: Request):
     """
     Status page with system health info.
@@ -426,7 +427,7 @@ async def status_page(request: Request):
     return HTMLResponse(content=render_status_page(status_data))
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 async def dashboard_page():
     """
     Dashboard page with metrics and charts.
@@ -437,7 +438,7 @@ async def dashboard_page():
     return HTMLResponse(content=render_dashboard_page())
 
 
-@router.get("/swagger", response_class=HTMLResponse)
+@router.get("/swagger", response_class=HTMLResponse, include_in_schema=False)
 async def swagger_page():
     """
     Swagger UI page for API documentation.
@@ -541,7 +542,7 @@ async def get_models(
     Returns:
         ModelList containing available models
     """
-    logger.info("Request to /v1/models")
+    logger.info(f"[{get_timestamp()}] 收到 /v1/models 请求")
 
     model_cache: ModelInfoCache = request.app.state.model_cache
 
@@ -552,7 +553,7 @@ async def get_models(
             import asyncio
             asyncio.create_task(model_cache.refresh())
         except Exception as e:
-            logger.warning(f"Failed to trigger model cache refresh: {e}")
+            logger.warning(f"[{get_timestamp()}] 触发模型缓存刷新失败: {e}")
 
     # Return static model list immediately
     openai_models = [
@@ -592,7 +593,7 @@ async def chat_completions(
     Raises:
         HTTPException: On validation or API errors
     """
-    logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream})")
+    logger.info(f"[{get_timestamp()}] 收到 /v1/chat/completions 请求 (模型={request_data.model}, 流式={request_data.stream})")
 
     # Store auth_manager and model in request state for RequestHandler and metrics
     request.state.auth_manager = auth_manager
@@ -636,7 +637,7 @@ async def anthropic_messages(
     Raises:
         HTTPException: On validation or API errors
     """
-    logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
+    logger.info(f"[{get_timestamp()}] 收到 /v1/messages 请求 (模型={request_data.model}, 流式={request_data.stream})")
 
     # Store auth_manager and model in request state for RequestHandler and metrics
     request.state.auth_manager = auth_manager
@@ -738,7 +739,7 @@ async def admin_get_stats(request: Request):
     """Get admin statistics."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
 
     stats = metrics.get_admin_stats()
@@ -764,7 +765,7 @@ async def admin_get_ip_stats(request: Request):
     """Get IP statistics."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
     return metrics.get_ip_stats()
 
@@ -774,7 +775,7 @@ async def admin_get_blacklist(request: Request):
     """Get IP blacklist."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
     return metrics.get_blacklist()
 
@@ -784,7 +785,7 @@ async def admin_ban_ip(request: Request, ip: str = Form(...), reason: str = Form
     """Ban an IP address."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
     success = metrics.ban_ip(ip, reason)
     return {"success": success}
@@ -795,7 +796,7 @@ async def admin_unban_ip(request: Request, ip: str = Form(...)):
     """Unban an IP address."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
     success = metrics.unban_ip(ip)
     return {"success": success}
@@ -806,7 +807,7 @@ async def admin_toggle_site(request: Request, enabled: bool = Form(...)):
     """Toggle site status."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     from kiro_gateway.metrics import metrics
     success = metrics.set_site_enabled(enabled)
     return {"success": success, "enabled": enabled}
@@ -817,15 +818,16 @@ async def admin_refresh_token(request: Request):
     """Force refresh Kiro token."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     try:
-        from kiro_gateway.auth import global_auth_manager
-        if global_auth_manager:
-            await global_auth_manager.force_refresh()
-            return {"success": True, "message": "Token refreshed"}
-        return {"success": False, "message": "No auth manager available"}
+        auth_manager = getattr(request.app.state, "auth_manager", None)
+        if auth_manager:
+            await auth_manager.force_refresh()
+            return {"success": True, "message": "Token 刷新成功"}
+        return {"success": False, "message": "认证管理器不可用"}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        logger.error(f"[{get_timestamp()}] Token 刷新失败: {e}")
+        return {"success": False, "message": f"刷新失败: {str(e)}"}
 
 
 @router.post("/admin/api/clear-cache", include_in_schema=False)
@@ -833,13 +835,13 @@ async def admin_clear_cache(request: Request):
     """Clear model cache."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
     try:
         from kiro_gateway.cache import model_cache
         await model_cache.refresh()
-        return {"success": True, "message": "Cache refreshed"}
+        return {"success": True, "message": "模型缓存已刷新"}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": f"模型缓存刷新失败: {str(e)}"}
 
 
 @router.get("/admin/api/tokens", include_in_schema=False)
@@ -847,7 +849,7 @@ async def admin_get_tokens(request: Request):
     """Get cached tokens list."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     tokens = []
     for token, manager in auth_cache.cache.items():
@@ -865,14 +867,14 @@ async def admin_remove_token(request: Request, token_id: str = Form(...)):
     """Remove a cached token."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     # Find token by ID (first 8 chars)
     for token in list(auth_cache.cache.keys()):
         if token[:8] == token_id:
             await auth_cache.remove(token)
             return {"success": True}
-    return {"success": False, "message": "Token not found"}
+    return {"success": False, "message": "Token 不存在"}
 
 
 @router.post("/admin/api/clear-tokens", include_in_schema=False)
@@ -880,7 +882,7 @@ async def admin_clear_tokens(request: Request):
     """Clear all cached tokens."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     await auth_cache.clear()
     return {"success": True}
@@ -891,7 +893,7 @@ async def admin_get_users(request: Request):
     """Get all registered users."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     users = user_db.get_all_users()
@@ -899,11 +901,15 @@ async def admin_get_users(request: Request):
         "users": [
             {
                 "id": u.id,
+                "linuxdo_id": u.linuxdo_id,
+                "github_id": u.github_id,
                 "username": u.username,
+                "avatar_url": u.avatar_url,
                 "trust_level": u.trust_level,
                 "is_admin": u.is_admin,
                 "is_banned": u.is_banned,
                 "created_at": u.created_at,
+                "last_login": u.last_login,
                 "token_count": user_db.get_token_count(u.id)["total"],
                 "api_key_count": user_db.get_api_key_count(u.id),
             }
@@ -917,7 +923,7 @@ async def admin_ban_user(request: Request, user_id: int = Form(...)):
     """Ban a user."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     success = user_db.set_user_banned(user_id, True)
@@ -929,7 +935,7 @@ async def admin_unban_user(request: Request, user_id: int = Form(...)):
     """Unban a user."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     success = user_db.set_user_banned(user_id, False)
@@ -941,7 +947,7 @@ async def admin_get_donated_tokens(request: Request):
     """Get all donated tokens with statistics."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     tokens = user_db.get_all_tokens_with_users()
@@ -969,7 +975,7 @@ async def admin_toggle_token_visibility(
     """Toggle token visibility."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     success = user_db.set_token_visibility(token_id, visibility)
@@ -981,7 +987,7 @@ async def admin_delete_donated_token(request: Request, token_id: int = Form(...)
     """Delete a donated token (admin override)."""
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未授权"})
 
     from kiro_gateway.database import user_db
     success = user_db.admin_delete_token(token_id)
@@ -1147,7 +1153,7 @@ async def user_get_profile(request: Request):
     """Get current user profile."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
     from kiro_gateway.database import user_db
     token_counts = user_db.get_token_count(user.id)
     api_key_count = user_db.get_api_key_count(user.id)
@@ -1168,7 +1174,7 @@ async def user_get_tokens(request: Request):
     """Get user's tokens."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
     from kiro_gateway.database import user_db
     tokens = user_db.get_user_tokens(user.id)
     return {
@@ -1188,6 +1194,32 @@ async def user_get_tokens(request: Request):
     }
 
 
+@router.get("/user/api/public-tokens", include_in_schema=False)
+async def user_get_public_tokens(request: Request):
+    """Get public tokens with contributor info for user page."""
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "未登录"})
+    from kiro_gateway.database import user_db
+    tokens = user_db.get_public_tokens_with_users()
+    avg_rate = sum(t["success_rate"] for t in tokens) / len(tokens) if tokens else 0
+    return {
+        "tokens": [
+            {
+                "id": t["id"],
+                "username": t["username"],
+                "status": t["status"],
+                "success_rate": round(t["success_rate"] * 100, 1),
+                "use_count": t["success_count"] + t["fail_count"],
+                "last_used": t["last_used"],
+            }
+            for t in tokens
+        ],
+        "count": len(tokens),
+        "avg_success_rate": round(avg_rate * 100, 1),
+    }
+
+
 @router.post("/user/api/tokens", include_in_schema=False)
 async def user_donate_token(
     request: Request,
@@ -1197,10 +1229,10 @@ async def user_donate_token(
     """Donate a new token."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
 
     if visibility not in ("public", "private"):
-        return JSONResponse(status_code=400, content={"error": "Invalid visibility"})
+        return JSONResponse(status_code=400, content={"error": "可见性无效"})
 
     from kiro_gateway.database import user_db
 
@@ -1215,7 +1247,7 @@ async def user_donate_token(
         )
         access_token = await temp_manager.get_access_token()
         if not access_token:
-            return {"success": False, "message": "Token 验证失败：无法获取 access token"}
+            return {"success": False, "message": "Token 验证失败：无法获取访问令牌"}
     except Exception as e:
         return {"success": False, "message": f"Token 验证失败：{str(e)}"}
 
@@ -1233,14 +1265,14 @@ async def user_update_token(
     """Update token visibility."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
 
     from kiro_gateway.database import user_db
 
     # Verify ownership
     token = user_db.get_token_by_id(token_id)
     if not token or token.user_id != user.id:
-        return JSONResponse(status_code=404, content={"error": "Token not found"})
+        return JSONResponse(status_code=404, content={"error": "Token 不存在"})
 
     success = user_db.set_token_visibility(token_id, visibility)
     return {"success": success}
@@ -1251,7 +1283,7 @@ async def user_delete_token(request: Request, token_id: int):
     """Delete a token."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
 
     from kiro_gateway.database import user_db
     success = user_db.delete_token(token_id, user.id)
@@ -1263,7 +1295,7 @@ async def user_get_keys(request: Request):
     """Get user's API keys."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
     from kiro_gateway.database import user_db
     keys = user_db.get_user_api_keys(user.id)
     return {
@@ -1287,18 +1319,14 @@ async def user_create_key(request: Request, name: str = Form("")):
     """Generate a new API key."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
 
     from kiro_gateway.database import user_db
 
-    # Check if user has at least one token
+    # Check if user has any tokens (for info purposes only, not blocking)
     tokens = user_db.get_user_tokens(user.id)
     active_tokens = [t for t in tokens if t.status == "active"]
-    if not active_tokens:
-        return {
-            "success": False,
-            "message": "需要至少一个有效的 Token 才能生成 API Key"
-        }
+    has_own_tokens = len(active_tokens) > 0
 
     plain_key, api_key = user_db.generate_api_key(user.id, name or None)
     return {
@@ -1306,6 +1334,7 @@ async def user_create_key(request: Request, name: str = Form("")):
         "key": plain_key,  # Only returned once!
         "key_prefix": api_key.key_prefix,
         "id": api_key.id,
+        "uses_public_pool": not has_own_tokens,
     }
 
 
@@ -1314,7 +1343,7 @@ async def user_delete_key(request: Request, key_id: int):
     """Delete an API key."""
     user = get_current_user(request)
     if not user:
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        return JSONResponse(status_code=401, content={"error": "未登录"})
 
     from kiro_gateway.database import user_db
     success = user_db.delete_api_key(key_id, user.id)
