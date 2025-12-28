@@ -400,6 +400,7 @@ class UserDatabase:
         search: str = "",
         is_admin: Optional[bool] = None,
         is_banned: Optional[bool] = None,
+        trust_level: Optional[int] = None,
         sort_field: str = "created_at",
         sort_order: str = "desc"
     ) -> List[User]:
@@ -418,6 +419,9 @@ class UserDatabase:
         if is_banned is not None:
             where.append("is_banned = ?")
             params.append(1 if is_banned else 0)
+        if trust_level is not None:
+            where.append("trust_level = ?")
+            params.append(trust_level)
 
         allowed_sort = {
             "id": "id",
@@ -426,6 +430,8 @@ class UserDatabase:
             "last_login": "last_login",
             "trust_level": "trust_level",
             "token_count": "(SELECT COUNT(*) FROM tokens t WHERE t.user_id = users.id)",
+            "api_key_count": "(SELECT COUNT(*) FROM api_keys k WHERE k.user_id = users.id AND k.is_active = 1)",
+            "is_banned": "is_banned",
         }
         sort_column = allowed_sort.get(sort_field, "created_at")
         order = "ASC" if sort_order.lower() == "asc" else "DESC"
@@ -444,7 +450,8 @@ class UserDatabase:
         self,
         search: str = "",
         is_admin: Optional[bool] = None,
-        is_banned: Optional[bool] = None
+        is_banned: Optional[bool] = None,
+        trust_level: Optional[int] = None
     ) -> int:
         """Get total user count with optional filters."""
         where: list[str] = []
@@ -461,6 +468,9 @@ class UserDatabase:
         if is_banned is not None:
             where.append("is_banned = ?")
             params.append(1 if is_banned else 0)
+        if trust_level is not None:
+            where.append("trust_level = ?")
+            params.append(trust_level)
 
         query = "SELECT COUNT(*) FROM users"
         if where:

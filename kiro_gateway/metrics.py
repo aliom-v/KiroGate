@@ -106,6 +106,7 @@ class PrometheusMetrics:
         self._ip_last_seen: Dict[str, int] = {}  # {ip: timestamp_ms}
         self._ip_blacklist: Dict[str, Dict] = {}  # {ip: {banned_at, reason}}
         self._site_enabled: bool = True  # Site on/off switch
+        self._self_use_enabled: bool = False  # Self-use mode toggle
         self._proxy_api_key: str = settings.proxy_api_key
 
         # Load persisted data
@@ -208,6 +209,11 @@ class PrometheusMetrics:
                 row = cursor.fetchone()
                 if row:
                     self._site_enabled = row[1] == "true"
+
+                cursor = conn.execute("SELECT key, value FROM site_config WHERE key = 'self_use_enabled'")
+                row = cursor.fetchone()
+                if row:
+                    self._self_use_enabled = row[1] == "true"
 
                 cursor = conn.execute("SELECT key, value FROM site_config WHERE key = 'proxy_api_key'")
                 row = cursor.fetchone()
@@ -812,6 +818,28 @@ class PrometheusMetrics:
                 logger.error(f"Failed to set site status: {e}")
                 return False
 
+    def is_self_use_enabled(self) -> bool:
+        """Check if self-use mode is enabled."""
+        with self._lock:
+            return self._self_use_enabled
+
+    def set_self_use_enabled(self, enabled: bool) -> bool:
+        """Enable or disable self-use mode."""
+        with self._lock:
+            self._self_use_enabled = enabled
+            try:
+                with sqlite3.connect(self._db_path) as conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO site_config (key, value) VALUES (?, ?)",
+                        ("self_use_enabled", "true" if enabled else "false")
+                    )
+                    conn.commit()
+                logger.info(f"Self-use enabled: {enabled}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to set self-use status: {e}")
+                return False
+
     def get_proxy_api_key(self) -> str:
         """Get current proxy API key."""
         with self._lock:
@@ -854,6 +882,7 @@ class PrometheusMetrics:
                 "activeConnections": self._active_connections,
                 "tokenValid": self._token_valid,
                 "siteEnabled": self._site_enabled,
+                "selfUseEnabled": self._self_use_enabled,
                 "uptimeSeconds": round(time.time() - self._start_time, 2),
                 "totalIPs": len(self._ip_requests),
                 "bannedIPs": len(self._ip_blacklist),

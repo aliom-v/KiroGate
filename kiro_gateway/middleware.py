@@ -267,7 +267,7 @@ class SiteGuardMiddleware(BaseHTTPMiddleware):
     <div class="icon">🔧</div>
     <h1>服务维护中</h1>
     <p>KiroGate 服务正在进行维护，请稍后再试。<br>给您带来的不便，敬请谅解。</p>
-    <div class="status">预计很快恢复</div>
+    <div class="status">当前模式：维护中</div>
   </div>
 </body>
 </html>'''

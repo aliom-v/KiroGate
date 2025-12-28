@@ -573,6 +573,32 @@ async def health(request: Request):
     }
 
 
+@router.get("/api/site-mode", include_in_schema=False)
+async def get_site_mode():
+    """Get current site mode (normal/self-use/maintenance)."""
+    from kiro_gateway.metrics import metrics
+
+    site_enabled = metrics.is_site_enabled()
+    self_use_enabled = metrics.is_self_use_enabled()
+
+    if not site_enabled:
+        mode = "maintenance"
+        label = "维护中"
+    elif self_use_enabled:
+        mode = "self_use"
+        label = "自用模式"
+    else:
+        mode = "normal"
+        label = "正常运行"
+
+    return {
+        "mode": mode,
+        "label": label,
+        "site_enabled": site_enabled,
+        "self_use_enabled": self_use_enabled,
+    }
+
+
 @router.get("/metrics")
 async def get_metrics():
     """
@@ -843,6 +869,7 @@ async def admin_get_stats(request: Request):
         "active_connections": stats.get("activeConnections", 0),
         "token_valid": stats.get("tokenValid", False),
         "site_enabled": stats.get("siteEnabled", True),
+        "self_use_enabled": stats.get("selfUseEnabled", False),
         "banned_count": stats.get("bannedIPs", 0),
         "cached_tokens": stats.get("cached_tokens", 0),
         "cache_size": stats.get("cacheSize", 0),
@@ -969,6 +996,20 @@ async def admin_toggle_site(
     success = metrics.set_site_enabled(enabled)
     return {"success": success, "enabled": enabled}
 
+
+@router.post("/admin/api/toggle-self-use", include_in_schema=False)
+async def admin_toggle_self_use(
+    request: Request,
+    enabled: bool = Form(...),
+    _csrf: None = Depends(require_same_origin)
+):
+    """Toggle self-use mode."""
+    session = request.cookies.get("admin_session")
+    if not verify_admin_session(session):
+        return JSONResponse(status_code=401, content={"error": "未授权"})
+    from kiro_gateway.metrics import metrics
+    success = metrics.set_self_use_enabled(enabled)
+    return {"success": success, "enabled": enabled}
 
 @router.get("/admin/api/proxy-key", include_in_schema=False)
 async def admin_get_proxy_key(request: Request):
@@ -1113,6 +1154,7 @@ async def admin_get_users(
     search: str = Query("", alias="search"),
     is_admin: bool | None = Query(None),
     is_banned: bool | None = Query(None),
+    trust_level: int | None = Query(None),
     sort_field: str = Query("created_at"),
     sort_order: str = Query("desc"),
     include_details: bool = Query(True),
@@ -1132,10 +1174,16 @@ async def admin_get_users(
         search=search,
         is_admin=is_admin,
         is_banned=is_banned,
+        trust_level=trust_level,
         sort_field=sort_field,
         sort_order=sort_order
     )
-    total = user_db.get_user_count(search=search, is_admin=is_admin, is_banned=is_banned)
+    total = user_db.get_user_count(
+        search=search,
+        is_admin=is_admin,
+        is_banned=is_banned,
+        trust_level=trust_level
+    )
 
     def _serialize_user(user):
         payload = {
@@ -1282,6 +1330,10 @@ async def admin_toggle_token_visibility(
     session = request.cookies.get("admin_session")
     if not verify_admin_session(session):
         return JSONResponse(status_code=401, content={"error": "未授权"})
+
+    from kiro_gateway.metrics import metrics
+    if metrics.is_self_use_enabled() and visibility == "public":
+        return JSONResponse(status_code=403, content={"error": "自用模式下禁止公开 Token"})
 
     from kiro_gateway.database import user_db
     success = user_db.set_token_visibility(token_id, visibility)
@@ -1520,8 +1572,10 @@ async def user_get_profile(request: Request):
     if not user:
         return JSONResponse(status_code=401, content={"error": "未登录"})
     from kiro_gateway.database import user_db
+    from kiro_gateway.metrics import metrics
     token_counts = user_db.get_token_count(user.id)
     api_key_count = user_db.get_api_key_count(user.id)
+    public_token_count = 0 if metrics.is_self_use_enabled() else token_counts["public"]
     return {
         "id": user.id,
         "username": user.username,
@@ -1529,7 +1583,7 @@ async def user_get_profile(request: Request):
         "trust_level": user.trust_level,
         "is_admin": user.is_admin,
         "token_count": token_counts["total"],
-        "public_token_count": token_counts["public"],
+        "public_token_count": public_token_count,
         "api_key_count": api_key_count,
     }
 
@@ -1650,6 +1704,9 @@ async def user_get_public_tokens(request: Request):
     user = get_current_user(request)
     if not user:
         return JSONResponse(status_code=401, content={"error": "未登录"})
+    from kiro_gateway.metrics import metrics
+    if metrics.is_self_use_enabled():
+        return JSONResponse(status_code=403, content={"error": "自用模式下不开放公开 Token 池"})
     from kiro_gateway.database import user_db
     tokens = user_db.get_public_tokens_with_users()
     avg_rate = sum(t["success_rate"] for t in tokens) / len(tokens) if tokens else 0
@@ -1682,6 +1739,10 @@ async def user_donate_token(
     user = get_current_user(request)
     if not user:
         return JSONResponse(status_code=401, content={"error": "未登录"})
+
+    from kiro_gateway.metrics import metrics
+    if metrics.is_self_use_enabled() and visibility == "public":
+        return JSONResponse(status_code=403, content={"error": "自用模式下禁止公开 Token"})
 
     if visibility not in ("public", "private"):
         return JSONResponse(status_code=400, content={"error": "可见性无效"})
@@ -1719,6 +1780,10 @@ async def user_update_token(
     user = get_current_user(request)
     if not user:
         return JSONResponse(status_code=401, content={"error": "未登录"})
+
+    from kiro_gateway.metrics import metrics
+    if metrics.is_self_use_enabled() and visibility == "public":
+        return JSONResponse(status_code=403, content={"error": "自用模式下禁止公开 Token"})
 
     from kiro_gateway.database import user_db
 
@@ -1803,11 +1868,16 @@ async def user_create_key(
         return JSONResponse(status_code=401, content={"error": "未登录"})
 
     from kiro_gateway.database import user_db
+    from kiro_gateway.metrics import metrics
 
     # Check if user has any tokens (for info purposes only, not blocking)
     tokens = user_db.get_user_tokens(user.id)
     active_tokens = [t for t in tokens if t.status == "active"]
     has_own_tokens = len(active_tokens) > 0
+    if metrics.is_self_use_enabled():
+        active_private = [t for t in active_tokens if t.visibility == "private"]
+        if not active_private:
+            return JSONResponse(status_code=400, content={"error": "自用模式下请先添加私有 Token"})
 
     plain_key, api_key = user_db.generate_api_key(user.id, name or None)
     return {
@@ -1848,6 +1918,9 @@ async def public_tokens_page(request: Request):
 @router.get("/api/public-tokens", include_in_schema=False)
 async def get_public_tokens():
     """Get public tokens list (masked)."""
+    from kiro_gateway.metrics import metrics
+    if metrics.is_self_use_enabled():
+        return JSONResponse(status_code=403, content={"error": "自用模式下不开放公开 Token 池"})
     from kiro_gateway.database import user_db
     tokens = user_db.get_public_tokens_with_users()
     return {

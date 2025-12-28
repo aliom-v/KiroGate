@@ -7,6 +7,7 @@ HTML templates for the web interface.
 """
 
 from kiro_gateway.config import APP_VERSION, AVAILABLE_MODELS
+import html
 import json
 
 # Static assets proxy base
@@ -37,93 +38,206 @@ COMMON_HEAD = f'''
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <script src="{PROXY_BASE}/proxy/cdn.tailwindcss.com"></script>
   <script src="{PROXY_BASE}/proxy/cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="{PROXY_BASE}/proxy/cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     :root {{
-      --primary: #6366f1;
-      --primary-dark: #4f46e5;
+      --primary: #38bdf8;
+      --primary-dark: #0284c7;
+      --primary-light: #7dd3fc;
+      --accent: #22d3ee;
+      --accent-2: #a3e635;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #f43f5e;
     }}
 
     /* Light mode (default) */
     [data-theme="light"] {{
-      --bg-main: #ffffff;
-      --bg-card: #f8fafc;
-      --bg-nav: #ffffff;
-      --bg-input: #ffffff;
+      --bg-main: #f4f7fb;
+      --bg-card: rgba(255, 255, 255, 0.78);
+      --bg-nav: rgba(248, 250, 252, 0.82);
+      --bg-input: rgba(255, 255, 255, 0.92);
+      --bg-hover: rgba(226, 232, 240, 0.7);
       --text: #0f172a;
       --text-muted: #64748b;
-      --border: #e2e8f0;
-      --border-dark: #cbd5e1;
+      --border: rgba(148, 163, 184, 0.35);
+      --border-dark: rgba(100, 116, 139, 0.5);
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.12);
+      --glow: 0 0 32px rgba(56, 189, 248, 0.18);
+      --grid-line: rgba(148, 163, 184, 0.2);
     }}
 
     /* Dark mode */
     [data-theme="dark"] {{
-      --bg-main: #0f172a;
-      --bg-card: #1e293b;
-      --bg-nav: #1e293b;
-      --bg-input: #334155;
+      --bg-main: #05070f;
+      --bg-card: rgba(15, 23, 42, 0.72);
+      --bg-nav: rgba(7, 10, 18, 0.82);
+      --bg-input: rgba(15, 23, 42, 0.85);
+      --bg-hover: rgba(30, 41, 59, 0.6);
       --text: #e2e8f0;
       --text-muted: #94a3b8;
-      --border: #334155;
-      --border-dark: #475569;
+      --border: rgba(148, 163, 184, 0.16);
+      --border-dark: rgba(148, 163, 184, 0.28);
+      --shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.45);
+      --shadow: 0 14px 32px rgba(2, 6, 23, 0.55);
+      --shadow-lg: 0 30px 60px rgba(2, 6, 23, 0.65);
+      --glow: 0 0 40px rgba(56, 189, 248, 0.3);
+      --grid-line: rgba(148, 163, 184, 0.1);
+    }}
+
+    * {{
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-dark) transparent;
     }}
 
     body {{
       background: var(--bg-main);
       color: var(--text);
-      font-family: system-ui, -apple-system, sans-serif;
-      transition: background-color 0.3s, color 0.3s;
+      font-family: 'Sora', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      line-height: 1.6;
+      min-height: 100vh;
+      position: relative;
+      isolation: isolate;
     }}
+    body::before {{
+      content: '';
+      position: fixed;
+      inset: -20% -10% -20% -10%;
+      background:
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.25), transparent 45%),
+        radial-gradient(circle at 85% 10%, rgba(34, 211, 238, 0.2), transparent 45%),
+        radial-gradient(circle at 50% 90%, rgba(163, 230, 53, 0.18), transparent 50%);
+      z-index: -2;
+      pointer-events: none;
+    }}
+    body::after {{
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.5;
+      z-index: -1;
+      pointer-events: none;
+    }}
+    nav, main, footer {{
+      position: relative;
+      z-index: 1;
+    }}
+
+    /* Enhanced card with subtle gradient border */
     .card {{
       background: var(--bg-card);
-      border-radius: 0.75rem;
+      border-radius: 1rem;
       padding: 1.5rem;
       border: 1px solid var(--border);
-      transition: background-color 0.3s, border-color 0.3s;
+      box-shadow: var(--shadow);
+      transition: all 0.3s ease;
+      position: relative;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
     }}
+    .card:hover {{
+      box-shadow: var(--shadow-lg), var(--glow);
+      border-color: var(--border-dark);
+      transform: translateY(-1px);
+    }}
+
+    /* Primary button with gradient and glow */
     .btn-primary {{
-      background: var(--primary);
-      color: white;
-      padding: 0.5rem 1rem;
-      border-radius: 0.5rem;
-      transition: all 0.2s;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 70%, var(--accent-2) 120%);
+      color: #ffffff;
+      padding: 0.625rem 1.25rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      transition: all 0.3s ease;
+      box-shadow: 0 12px 24px rgba(56, 189, 248, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
     }}
-    .btn-primary:hover {{ background: var(--primary-dark); }}
+    .btn-primary:hover {{
+      transform: translateY(-2px);
+      box-shadow: 0 18px 36px rgba(56, 189, 248, 0.35);
+      filter: brightness(1.05);
+    }}
+    .btn-primary:active {{
+      transform: translateY(0);
+    }}
+
+    /* Navigation link with underline animation */
     .nav-link {{
       color: var(--text-muted);
-      transition: color 0.2s;
+      transition: color 0.2s ease;
+      position: relative;
+      padding-bottom: 2px;
     }}
-    .nav-link:hover, .nav-link.active {{ color: var(--primary); }}
+    .nav-link::after {{
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--primary), var(--accent), var(--accent-2));
+      transition: width 0.3s ease;
+      border-radius: 1px;
+    }}
+    .nav-link:hover {{ color: var(--primary); }}
+    .nav-link:hover::after {{ width: 100%; }}
+    .nav-link.active {{ color: var(--primary); }}
+    .nav-link.active::after {{ width: 100%; }}
+
+    /* Theme toggle with smooth animation */
     .theme-toggle {{
       cursor: pointer;
       padding: 0.5rem;
-      border-radius: 0.5rem;
-      transition: background-color 0.2s;
+      border-radius: 0.625rem;
+      transition: all 0.2s ease;
+      background: transparent;
+      border: 1px solid transparent;
     }}
     .theme-toggle:hover {{
-      background: var(--bg-card);
+      background: var(--bg-hover);
+      border-color: var(--border);
     }}
     /* 代码块优化 */
     pre {{
       max-width: 100%;
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      font-size: 0.875rem;
     }}
     pre::-webkit-scrollbar {{
       height: 6px;
     }}
     pre::-webkit-scrollbar-track {{
-      background: var(--bg-input);
+      background: transparent;
       border-radius: 3px;
     }}
     pre::-webkit-scrollbar-thumb {{
       background: var(--border-dark);
       border-radius: 3px;
     }}
-    /* 加载动画 */
+    pre::-webkit-scrollbar-thumb:hover {{
+      background: var(--text-muted);
+    }}
+
+    /* Enhanced loading animations */
     .loading-spinner {{
       display: inline-block;
       width: 20px;
@@ -143,53 +257,296 @@ COMMON_HEAD = f'''
       0%, 100% {{ opacity: 1; }}
       50% {{ opacity: 0.5; }}
     }}
+    @keyframes fadeIn {{
+      from {{ opacity: 0; transform: translateY(10px); }}
+      to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .fade-in {{
+      animation: fadeIn 0.4s ease-out;
+    }}
+
     /* 表格响应式 */
     .table-responsive {{
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
+      border-radius: 0.75rem;
     }}
     .table-responsive::-webkit-scrollbar {{
       height: 6px;
     }}
     .table-responsive::-webkit-scrollbar-track {{
-      background: var(--bg-input);
+      background: transparent;
     }}
     .table-responsive::-webkit-scrollbar-thumb {{
       background: var(--border-dark);
       border-radius: 3px;
     }}
-    .announcement-banner {{
-      background: rgba(99, 102, 241, 0.08);
+
+    /* Enhanced table rows */
+    .table-row {{
       border-bottom: 1px solid var(--border);
+      transition: background-color 0.2s ease;
+    }}
+    .table-row:hover {{
+      background: var(--bg-hover);
+    }}
+    .table-row:last-child {{
+      border-bottom: none;
+    }}
+    .data-table {{
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+    }}
+    .data-table thead th {{
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.08), rgba(34, 211, 238, 0.05));
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }}
+    .data-table tbody tr {{
+      transition: transform 0.2s ease, background-color 0.2s ease;
+    }}
+    .data-table tbody tr:hover {{
+      transform: translateY(-1px);
+    }}
+    .toolbar {{
+      background: rgba(15, 23, 42, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 0.75rem;
+      box-shadow: var(--shadow-sm);
+    }}
+    [data-theme="dark"] .toolbar {{
+      background: rgba(15, 23, 42, 0.35);
+    }}
+    .announcement-banner {{
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(34, 211, 238, 0.08) 60%, rgba(163, 230, 53, 0.06) 100%);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
     }}
     .announcement-banner .title {{
       color: var(--text);
+      font-weight: 600;
     }}
     .announcement-banner .content {{
-      color: var(--text);
+      color: var(--text-muted);
     }}
     .btn-announcement {{
-      background: var(--primary);
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
       color: #fff;
-      padding: 0.35rem 0.75rem;
+      padding: 0.4rem 0.85rem;
       border-radius: 0.5rem;
       font-size: 0.875rem;
-      transition: opacity 0.2s;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      border: none;
+      cursor: pointer;
     }}
     .btn-announcement:hover {{
-      opacity: 0.9;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(56, 189, 248, 0.35);
     }}
     .btn-announcement-outline {{
       background: var(--bg-card);
       color: var(--text);
-      padding: 0.35rem 0.75rem;
+      padding: 0.4rem 0.85rem;
       border-radius: 0.5rem;
       font-size: 0.875rem;
       border: 1px solid var(--border);
-      transition: opacity 0.2s;
+      transition: all 0.2s ease;
+      cursor: pointer;
     }}
     .btn-announcement-outline:hover {{
-      opacity: 0.9;
+      background: var(--bg-hover);
+      border-color: var(--border-dark);
+    }}
+
+    /* Mode banner with gradient */
+    .mode-banner {{
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.08) 0%, rgba(34, 211, 238, 0.12) 50%, rgba(163, 230, 53, 0.08) 100%);
+      border-bottom: 1px dashed var(--border);
+    }}
+    .mode-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+    }}
+    .mode-pill.normal {{
+      background: rgba(16, 185, 129, 0.12);
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.3);
+    }}
+    .mode-pill.self-use {{
+      background: rgba(245, 158, 11, 0.12);
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.3);
+    }}
+    .mode-pill.maintenance {{
+      background: rgba(239, 68, 68, 0.12);
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.3);
+    }}
+
+    /* Self-use mode visibility */
+    .self-use-only {{
+      display: none;
+    }}
+    body[data-self-use="true"] .public-only {{
+      display: none !important;
+    }}
+    body[data-self-use="true"] .self-use-only {{
+      display: block;
+    }}
+
+    /* Feature cards with hover effect */
+    .feature-card {{
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }}
+    .feature-card::before {{
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }}
+    .feature-card:hover {{
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg), var(--glow);
+      border-color: var(--primary-light);
+    }}
+    .feature-card:hover::before {{
+      opacity: 1;
+    }}
+
+    /* Stat cards */
+    .stat-card {{
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.25rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }}
+    .stat-card:hover {{
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }}
+    .stat-value {{
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.2;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }}
+    .stat-label {{
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }}
+
+    /* Input fields */
+    input[type="text"], input[type="password"], input[type="email"], input[type="number"], textarea, select {{
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 0.625rem;
+      padding: 0.625rem 0.875rem;
+      transition: all 0.2s ease;
+      outline: none;
+    }}
+    input:focus, textarea:focus, select:focus {{
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+    }}
+
+    /* Gradient text */
+    .gradient-text {{
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }}
+
+    /* Hero section background */
+    .hero-bg {{
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero-bg::before {{
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 80%, rgba(34, 211, 238, 0.1) 0%, transparent 50%);
+      animation: heroFloat 20s ease-in-out infinite;
+      pointer-events: none;
+    }}
+    @keyframes heroFloat {{
+      0%, 100% {{ transform: translate(0, 0) rotate(0deg); }}
+      50% {{ transform: translate(-2%, 2%) rotate(1deg); }}
+    }}
+    .text-indigo-400,
+    .text-indigo-500 {{
+      color: var(--primary) !important;
+    }}
+    .text-indigo-300 {{
+      color: var(--primary-light) !important;
+    }}
+    .text-purple-400 {{
+      color: var(--accent) !important;
+    }}
+    .bg-indigo-500\/10,
+    .hover\:bg-indigo-500\/10:hover {{
+      background-color: rgba(56, 189, 248, 0.12) !important;
+    }}
+    .bg-indigo-500\/20,
+    .hover\:bg-indigo-500\/20:hover {{
+      background-color: rgba(56, 189, 248, 0.2) !important;
+    }}
+    .bg-indigo-500\/30,
+    .hover\:bg-indigo-500\/30:hover {{
+      background-color: rgba(56, 189, 248, 0.3) !important;
+    }}
+    .bg-purple-500\/20 {{
+      background-color: rgba(34, 211, 238, 0.2) !important;
+    }}
+    .hover\:ring-indigo-500\/50:hover {{
+      --tw-ring-color: rgba(56, 189, 248, 0.5) !important;
+    }}
+    .hover\:text-indigo-300:hover,
+    .hover\:text-indigo-400:hover {{
+      color: var(--primary) !important;
+    }}
+    .accent-indigo-500 {{
+      accent-color: var(--primary);
     }}
   </style>
   <script>
@@ -202,11 +559,14 @@ COMMON_HEAD = f'''
 '''
 
 COMMON_NAV = f'''
-  <nav style="background: var(--bg-nav); border-bottom: 1px solid var(--border);" class="sticky top-0 z-50">
+  <nav style="background: var(--bg-nav); border-bottom: 1px solid var(--border); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);" class="sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex items-center space-x-8">
-          <a href="/" class="text-2xl font-bold text-indigo-500">⚡ KiroGate</a>
+          <a href="/" class="flex items-center gap-2 text-2xl font-bold group">
+            <span class="text-2xl group-hover:scale-110 transition-transform">⚡</span>
+            <span class="gradient-text">KiroGate</span>
+          </a>
           <div class="hidden md:flex space-x-6">
             <a href="/" class="nav-link">首页</a>
             <a href="/docs" class="nav-link">文档</a>
@@ -216,10 +576,10 @@ COMMON_NAV = f'''
             <a href="/dashboard" class="nav-link">面板</a>
           </div>
         </div>
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3">
           <!-- 登录/用户按钮区域 -->
           <div id="auth-btn-area">
-            <a href="/login" id="login-btn" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-90" style="background: var(--primary); color: white;">
+            <a href="/login" id="login-btn" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all btn-primary">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
               登录
             </a>
@@ -232,7 +592,7 @@ COMMON_NAV = f'''
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
             </svg>
           </button>
-          <span class="hidden sm:inline text-sm" style="color: var(--text-muted);">v{APP_VERSION}</span>
+          <span class="hidden sm:inline text-xs px-2 py-1 rounded-full" style="background: var(--bg-input); color: var(--text-muted);">v{APP_VERSION}</span>
           <!-- 移动端汉堡菜单按钮 -->
           <button onclick="toggleMobileMenu()" class="md:hidden theme-toggle" title="菜单">
             <svg id="menu-icon-open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -247,19 +607,25 @@ COMMON_NAV = f'''
     </div>
     <!-- 移动端导航菜单 -->
     <div id="mobile-menu" class="md:hidden hidden" style="background: var(--bg-nav); border-top: 1px solid var(--border);">
-      <div class="px-4 py-3 space-y-2">
-        <a href="/" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">首页</a>
-        <a href="/docs" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">文档</a>
-        <a href="/swagger" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">接口</a>
-        <a href="/playground" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">测试</a>
-        <a href="/deploy" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">部署</a>
-        <a href="/dashboard" class="block nav-link py-2 px-3 rounded hover:bg-indigo-500/10">面板</a>
-        <div id="mobile-auth-area" class="pt-2 mt-2" style="border-top: 1px solid var(--border);">
-          <a href="/login" class="block py-2 px-3 rounded text-center font-medium" style="background: var(--primary); color: white;">登录</a>
+      <div class="px-4 py-3 space-y-1">
+        <a href="/" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">首页</a>
+        <a href="/docs" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">文档</a>
+        <a href="/swagger" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">接口</a>
+        <a href="/playground" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">测试</a>
+        <a href="/deploy" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">部署</a>
+        <a href="/dashboard" class="block nav-link py-2.5 px-4 rounded-lg hover:bg-indigo-500/10 transition-colors">面板</a>
+        <div id="mobile-auth-area" class="pt-3 mt-3" style="border-top: 1px solid var(--border);">
+          <a href="/login" class="block py-2.5 px-4 rounded-lg text-center font-medium btn-primary">登录</a>
         </div>
       </div>
     </div>
   </nav>
+  <div id="siteModeBanner" class="mode-banner">
+    <div class="max-w-7xl mx-auto px-4 py-2 flex items-center gap-2">
+      <span class="text-xs sm:text-sm" style="color: var(--text-muted);">当前模式：</span>
+      <span id="siteModeText" class="mode-pill normal">正常运行</span>
+    </div>
+  </div>
   <div id="siteAnnouncement" class="announcement-banner" style="display: none;">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div class="flex items-start gap-2">
@@ -277,6 +643,30 @@ COMMON_NAV = f'''
   </div>
   <script>
     let currentAnnouncementId = null;
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    (function() {{
+      const modeEl = document.getElementById('siteModeText');
+      if (!modeEl) return;
+      fetch('/api/site-mode')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {{
+          if (!d) return;
+          modeEl.textContent = d.label || '正常运行';
+          modeEl.classList.remove('normal', 'self-use', 'maintenance');
+          const cls = d.mode === 'self_use' ? 'self-use' : d.mode === 'maintenance' ? 'maintenance' : 'normal';
+          modeEl.classList.add(cls);
+        }})
+        .catch(() => {{}});
+    }})();
 
     function hideAnnouncement() {{
       const banner = document.getElementById('siteAnnouncement');
@@ -367,18 +757,21 @@ COMMON_NAV = f'''
         const r = await fetch('/user/api/profile');
         if (r.ok) {{
           const d = await r.json();
+          const rawName = d.username || '用户';
+          const safeName = escapeHtml(rawName);
+          const safeInitial = escapeHtml(rawName.slice(0, 1).toUpperCase() || 'U');
           const area = document.getElementById('auth-btn-area');
           const mobileArea = document.getElementById('mobile-auth-area');
           if (area) {{
             area.innerHTML = `<a href="/user" class="hidden sm:flex items-center gap-2 nav-link font-medium">
-              <span class="w-7 h-7 rounded-full flex items-center justify-center text-sm text-white" style="background: var(--primary);">${{(d.username || 'U')[0].toUpperCase()}}</span>
-              <span>${{d.username || '用户'}}</span>
+              <span class="w-7 h-7 rounded-full flex items-center justify-center text-sm text-white" style="background: var(--primary);">${{safeInitial}}</span>
+              <span>${{safeName}}</span>
             </a>`;
           }}
           if (mobileArea) {{
             mobileArea.innerHTML = `<a href="/user" class="flex items-center justify-center gap-2 py-2 px-3 rounded font-medium" style="background: var(--bg-card); border: 1px solid var(--border);">
-              <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white" style="background: var(--primary);">${{(d.username || 'U')[0].toUpperCase()}}</span>
-              <span>${{d.username || '用户中心'}}</span>
+              <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white" style="background: var(--primary);">${{safeInitial}}</span>
+              <span>${{safeName || '用户中心'}}</span>
             </a>`;
           }}
           loadAnnouncement();
@@ -389,25 +782,33 @@ COMMON_NAV = f'''
 '''
 
 COMMON_FOOTER = '''
-  <footer style="background: var(--bg-nav); border-top: 1px solid var(--border);" class="py-6 sm:py-8 mt-12 sm:mt-16">
-    <div class="max-w-7xl mx-auto px-4 text-center" style="color: var(--text-muted);">
-      <p class="text-sm sm:text-base">KiroGate - OpenAI & Anthropic 兼容的 Kiro API 网关</p>
-      <div class="mt-3 sm:mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs sm:text-sm">
-        <span class="flex items-center gap-1">
-          <span style="color: var(--text);">Deno</span>
-          <a href="https://kirogate.deno.dev" class="text-indigo-400 hover:underline" target="_blank">Demo</a>
-          <span>·</span>
-          <a href="https://github.com/dext7r/KiroGate" class="text-indigo-400 hover:underline" target="_blank">GitHub</a>
-        </span>
-        <span class="hidden sm:inline" style="color: var(--border-dark);">|</span>
-        <span class="flex items-center gap-1">
-          <span style="color: var(--text);">Python</span>
-          <a href="https://kirogate.fly.dev" class="text-indigo-400 hover:underline" target="_blank">Demo</a>
-          <span>·</span>
-          <a href="https://github.com/aliom-v/KiroGate" class="text-indigo-400 hover:underline" target="_blank">GitHub</a>
-        </span>
+  <footer style="background: var(--bg-card); border-top: 1px solid var(--border);" class="py-8 sm:py-10 mt-16 sm:mt-20">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="flex flex-col items-center">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-2xl">⚡</span>
+          <span class="text-xl font-bold gradient-text">KiroGate</span>
+        </div>
+        <p class="text-sm text-center mb-4" style="color: var(--text-muted);">OpenAI & Anthropic 兼容的 Kiro API 网关</p>
+        <div class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm mb-6">
+          <span class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-400"></span>
+            <span style="color: var(--text);">Deno</span>
+            <a href="https://kirogate.deno.dev" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">Demo</a>
+            <span style="color: var(--border-dark);">·</span>
+            <a href="https://github.com/dext7r/KiroGate" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">GitHub</a>
+          </span>
+          <span class="hidden sm:inline" style="color: var(--border-dark);">|</span>
+          <span class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+            <span style="color: var(--text);">Python</span>
+            <a href="https://kirogate.fly.dev" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">Demo</a>
+            <span style="color: var(--border-dark);">·</span>
+            <a href="https://github.com/aliom-v/KiroGate" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">GitHub</a>
+          </span>
+        </div>
+        <p class="text-xs opacity-60" style="color: var(--text-muted);">欲买桂花同载酒 终不似少年游</p>
       </div>
-      <p class="mt-3 text-xs sm:text-sm opacity-75">欲买桂花同载酒 终不似少年游</p>
     </div>
   </footer>
 '''
@@ -427,74 +828,90 @@ def render_home_page() -> str:
 
   <main class="max-w-7xl mx-auto px-4 py-8 sm:py-12">
     <!-- Hero Section -->
-    <section class="text-center py-8 sm:py-16">
-      <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6 bg-gradient-to-r from-indigo-400 to-purple-500 bg-clip-text text-transparent">
-        KiroGate API 网关
-      </h1>
-      <p class="text-base sm:text-xl mb-6 sm:mb-8 max-w-2xl mx-auto px-4" style="color: var(--text-muted);">
-        将 OpenAI 和 Anthropic API 请求无缝代理到 Kiro (AWS CodeWhisperer)，
-        支持完整的流式传输、工具调用和多模型切换。
-      </p>
-      <div class="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 px-4">
-        <a href="/docs" class="btn-primary text-base sm:text-lg px-6 py-3">📖 查看文档</a>
-        <a href="/playground" class="btn-primary text-base sm:text-lg px-6 py-3" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text);">🎮 在线试用</a>
+    <section class="text-center py-12 sm:py-20 hero-bg">
+      <div class="relative z-10">
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-6" style="background: var(--bg-card); border: 1px solid var(--border);">
+          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+          <span class="text-sm" style="color: var(--text-muted);">服务运行中</span>
+        </div>
+        <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold mb-6">
+          <span class="gradient-text">KiroGate</span>
+          <span style="color: var(--text);"> API 网关</span>
+        </h1>
+        <p class="text-lg sm:text-xl mb-8 max-w-2xl mx-auto px-4" style="color: var(--text-muted);">
+          将 OpenAI 和 Anthropic API 请求无缝代理到 Kiro (AWS CodeWhisperer)，
+          支持完整的流式传输、工具调用和多模型切换。
+        </p>
+        <div class="flex flex-col sm:flex-row justify-center gap-4 px-4">
+          <a href="/docs" class="btn-primary text-lg px-8 py-3.5 inline-flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            查看文档
+          </a>
+          <a href="/playground" class="text-lg px-8 py-3.5 rounded-xl font-medium inline-flex items-center justify-center gap-2 transition-all hover:scale-105" style="background: var(--bg-card); border: 1px solid var(--border); color: var(--text);">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            在线试用
+          </a>
+        </div>
       </div>
     </section>
 
     <!-- Features Grid -->
-    <section class="grid md:grid-cols-3 gap-6 py-12">
-      <div class="card">
-        <div class="text-3xl mb-4">🔄</div>
-        <h3 class="text-xl font-semibold mb-2">双 API 兼容</h3>
+    <section class="grid md:grid-cols-3 gap-6 py-16">
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🔄</div>
+        <h3 class="text-xl font-semibold mb-3">双 API 兼容</h3>
         <p style="color: var(--text-muted);">同时支持 OpenAI 和 Anthropic API 格式，无需修改现有代码。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">⚡</div>
-        <h3 class="text-xl font-semibold mb-2">流式传输</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">⚡</div>
+        <h3 class="text-xl font-semibold mb-3">流式传输</h3>
         <p style="color: var(--text-muted);">完整的 SSE 流式支持，实时获取模型响应。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">🔧</div>
-        <h3 class="text-xl font-semibold mb-2">工具调用</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🔧</div>
+        <h3 class="text-xl font-semibold mb-3">工具调用</h3>
         <p style="color: var(--text-muted);">支持 Function Calling，构建强大的 AI Agent。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">👥</div>
-        <h3 class="text-xl font-semibold mb-2">用户系统</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">👥</div>
+        <h3 class="text-xl font-semibold mb-3">用户系统</h3>
         <p style="color: var(--text-muted);">支持 LinuxDo/GitHub 登录，添加 Token 获取 API Key。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">🔑</div>
-        <h3 class="text-xl font-semibold mb-2">API Key 生成</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🔑</div>
+        <h3 class="text-xl font-semibold mb-3">API Key 生成</h3>
         <p style="color: var(--text-muted);">生成 sk-xxx 格式密钥，与 OpenAI 客户端无缝兼容。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">🎁</div>
-        <h3 class="text-xl font-semibold mb-2">Token 共享池</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🎁</div>
+        <h3 class="text-xl font-semibold mb-3">Token 共享池</h3>
         <p style="color: var(--text-muted);">公开添加的 Token 组成共享池，智能负载均衡。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">🔁</div>
-        <h3 class="text-xl font-semibold mb-2">自动重试</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🔁</div>
+        <h3 class="text-xl font-semibold mb-3">自动重试</h3>
         <p style="color: var(--text-muted);">智能处理 403/429/5xx 错误，自动刷新 Token。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">📊</div>
-        <h3 class="text-xl font-semibold mb-2">监控面板</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">📊</div>
+        <h3 class="text-xl font-semibold mb-3">监控面板</h3>
         <p style="color: var(--text-muted);">实时查看请求统计、响应时间和模型使用情况。</p>
       </div>
-      <div class="card">
-        <div class="text-3xl mb-4">🛡️</div>
-        <h3 class="text-xl font-semibold mb-2">Admin 后台</h3>
+      <div class="feature-card">
+        <div class="text-4xl mb-4">🛡️</div>
+        <h3 class="text-xl font-semibold mb-3">Admin 后台</h3>
         <p style="color: var(--text-muted);">用户管理、Token 池管理、IP 黑名单等功能。</p>
       </div>
     </section>
 
     <!-- Models Chart -->
     <section class="py-12">
-      <h2 class="text-2xl font-bold mb-6 text-center">📈 支持的模型</h2>
+      <div class="text-center mb-8">
+        <h2 class="text-3xl font-bold mb-3">支持的模型</h2>
+        <p style="color: var(--text-muted);">多种 Claude 模型可供选择</p>
+      </div>
       <div class="card">
-        <div id="modelsChart" style="height: 300px;"></div>
+        <div id="modelsChart" style="height: 320px;"></div>
       </div>
     </section>
   </main>
@@ -504,20 +921,28 @@ def render_home_page() -> str:
   <script>
     // ECharts 模型展示图
     const modelsChart = echarts.init(document.getElementById('modelsChart'));
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     modelsChart.setOption({{
-      tooltip: {{ trigger: 'axis' }},
+      tooltip: {{
+        trigger: 'axis',
+        backgroundColor: isDark ? 'rgba(17, 24, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+        borderColor: isDark ? '#334155' : '#e2e8f0',
+        textStyle: {{ color: isDark ? '#e2e8f0' : '#0f172a' }}
+      }},
+      grid: {{ left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true }},
       xAxis: {{
         type: 'category',
         data: {models_json},
-        axisLabel: {{ rotate: 45, color: '#94a3b8' }},
-        axisLine: {{ lineStyle: {{ color: '#334155' }} }}
+        axisLabel: {{ rotate: 30, color: isDark ? '#94a3b8' : '#64748b', fontSize: 11 }},
+        axisLine: {{ lineStyle: {{ color: isDark ? '#334155' : '#e2e8f0' }} }}
       }},
       yAxis: {{
         type: 'value',
         name: '性能指数',
-        axisLabel: {{ color: '#94a3b8' }},
-        axisLine: {{ lineStyle: {{ color: '#334155' }} }},
-        splitLine: {{ lineStyle: {{ color: '#1e293b' }} }}
+        nameTextStyle: {{ color: isDark ? '#94a3b8' : '#64748b' }},
+        axisLabel: {{ color: isDark ? '#94a3b8' : '#64748b' }},
+        axisLine: {{ lineStyle: {{ color: isDark ? '#334155' : '#e2e8f0' }} }},
+        splitLine: {{ lineStyle: {{ color: isDark ? '#1e293b' : '#f1f5f9' }} }}
       }},
       series: [{{
         name: '模型能力',
@@ -525,9 +950,18 @@ def render_home_page() -> str:
         data: [100, 100, 70, 90, 90, 85, 85, 80],
         itemStyle: {{
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            {{ offset: 0, color: '#6366f1' }},
-            {{ offset: 1, color: '#4f46e5' }}
-          ])
+            {{ offset: 0, color: '#818cf8' }},
+            {{ offset: 1, color: '#6366f1' }}
+          ]),
+          borderRadius: [6, 6, 0, 0]
+        }},
+        emphasis: {{
+          itemStyle: {{
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              {{ offset: 0, color: '#a5b4fc' }},
+              {{ offset: 1, color: '#818cf8' }}
+            ])
+          }}
         }}
       }}]
     }});
@@ -546,44 +980,58 @@ def render_docs_page() -> str:
   {COMMON_NAV}
 
   <main class="max-w-7xl mx-auto px-4 py-12">
-    <h1 class="text-4xl font-bold mb-8">📖 API 文档</h1>
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-bold mb-4">
+        <span class="gradient-text">API 文档</span>
+      </h1>
+      <p style="color: var(--text-muted);">快速上手 KiroGate API</p>
+    </div>
 
     <div class="space-y-8">
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">🔑 认证</h2>
-        <p style="color: var(--text-muted);" class="mb-4">所有 API 请求需要在 Header 中携带 API Key。支持三种认证模式：</p>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🔑</div>
+          <h2 class="text-2xl font-semibold">认证方式</h2>
+        </div>
+        <p style="color: var(--text-muted);" class="mb-6">所有 API 请求需要在 Header 中携带 API Key。支持三种认证模式：</p>
 
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">模式 1: 用户 API Key（sk-xxx 格式）🌟 最简单</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
+        <div class="space-y-6">
+          <div class="p-4 rounded-xl" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border: 1px solid rgba(16, 185, 129, 0.2);">
+            <h3 class="text-lg font-medium mb-3 text-emerald-400">模式 1: 用户 API Key（sk-xxx 格式）⭐ 推荐</h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm mb-3">
 # OpenAI 格式
 Authorization: Bearer sk-xxxxxxxxxxxxxxxx
 
 # Anthropic 格式
 x-api-key: sk-xxxxxxxxxxxxxxxx</pre>
-        <p class="text-sm mb-4" style="color: var(--text-muted);">登录后在用户中心生成，自动使用您添加的 Token 或公开 Token 池。</p>
+            <p class="text-sm" style="color: var(--text-muted);">登录后在用户中心生成，自动使用您添加的 Token 或公开 Token 池。</p>
+          </div>
 
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">模式 2: 组合模式（用户自带 REFRESH_TOKEN）</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
+          <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <h3 class="text-lg font-medium mb-3 text-blue-400">模式 2: 组合模式（用户自带 REFRESH_TOKEN）</h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm mb-3">
 # OpenAI 格式
 Authorization: Bearer YOUR_PROXY_API_KEY:YOUR_REFRESH_TOKEN
 
 # Anthropic 格式
 x-api-key: YOUR_PROXY_API_KEY:YOUR_REFRESH_TOKEN</pre>
+          </div>
 
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">模式 3: 简单模式（使用服务器配置的 REFRESH_TOKEN）</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+          <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <h3 class="text-lg font-medium mb-3 text-amber-400">模式 3: 简单模式（使用服务器配置的 REFRESH_TOKEN）</h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 # OpenAI 格式
 Authorization: Bearer YOUR_PROXY_API_KEY
 
 # Anthropic 格式
 x-api-key: YOUR_PROXY_API_KEY</pre>
+          </div>
+        </div>
 
-        <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg mt-4">
-          <p class="text-sm" style="color: var(--text-muted);">
-            <strong>💡 推荐使用方式：</strong>
-          </p>
-          <ul class="text-sm mt-2 space-y-1" style="color: var(--text-muted);">
-            <li>• <strong>普通用户</strong>：登录后生成 <code>sk-xxx</code> 格式的 API Key，最简单易用</li>
+        <div class="p-4 rounded-xl mt-6" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(99, 102, 241, 0.2);">
+          <p class="text-sm font-semibold mb-2" style="color: var(--text);">💡 推荐使用方式</p>
+          <ul class="text-sm space-y-1.5" style="color: var(--text-muted);">
+            <li>• <strong>普通用户</strong>：登录后生成 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-input);">sk-xxx</code> 格式的 API Key，最简单易用</li>
             <li>• <strong>自部署用户</strong>：使用组合模式，自带 REFRESH_TOKEN，无需服务器配置</li>
             <li>• <strong>缓存优化</strong>：每个用户的认证信息会被缓存（最多100个用户），提升性能</li>
           </ul>
@@ -591,50 +1039,62 @@ x-api-key: YOUR_PROXY_API_KEY</pre>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">📡 端点列表</h2>
-        <div class="space-y-4">
-          <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-1 text-xs font-bold rounded bg-green-500 text-white">GET</span>
-              <code>/</code>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📡</div>
+          <h2 class="text-2xl font-semibold">端点列表</h2>
+        </div>
+        <div class="space-y-3">
+          <div class="p-4 rounded-xl flex items-start gap-4" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500 text-white shrink-0">GET</span>
+            <div>
+              <code class="font-mono">/</code>
+              <p class="text-sm mt-1" style="color: var(--text-muted);">健康检查端点</p>
             </div>
-            <p class="text-sm" style="color: var(--text-muted);">健康检查端点</p>
           </div>
-          <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-1 text-xs font-bold rounded bg-green-500 text-white">GET</span>
-              <code>/health</code>
+          <div class="p-4 rounded-xl flex items-start gap-4" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500 text-white shrink-0">GET</span>
+            <div>
+              <code class="font-mono">/health</code>
+              <p class="text-sm mt-1" style="color: var(--text-muted);">详细健康检查，返回 token 状态和缓存信息</p>
             </div>
-            <p class="text-sm" style="color: var(--text-muted);">详细健康检查，返回 token 状态和缓存信息</p>
           </div>
-          <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-1 text-xs font-bold rounded bg-green-500 text-white">GET</span>
-              <code>/v1/models</code>
+          <div class="p-4 rounded-xl flex items-start gap-4" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-500 text-white shrink-0">GET</span>
+            <div>
+              <code class="font-mono">/v1/models</code>
+              <p class="text-sm mt-1" style="color: var(--text-muted);">获取可用模型列表 (需要认证)</p>
             </div>
-            <p class="text-sm" style="color: var(--text-muted);">获取可用模型列表 (需要认证)</p>
           </div>
-          <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-1 text-xs font-bold rounded bg-blue-500 text-white">POST</span>
-              <code>/v1/chat/completions</code>
+          <div class="p-4 rounded-xl flex items-start gap-4" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-blue-500 text-white shrink-0">POST</span>
+            <div>
+              <code class="font-mono">/v1/chat/completions</code>
+              <p class="text-sm mt-1" style="color: var(--text-muted);">OpenAI 兼容的聊天补全 API (需要认证)</p>
             </div>
-            <p class="text-sm" style="color: var(--text-muted);">OpenAI 兼容的聊天补全 API (需要认证)</p>
           </div>
-          <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg">
-            <div class="flex items-center gap-2 mb-2">
-              <span class="px-2 py-1 text-xs font-bold rounded bg-blue-500 text-white">POST</span>
-              <code>/v1/messages</code>
+          <div class="p-4 rounded-xl flex items-start gap-4" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <span class="px-2.5 py-1 text-xs font-bold rounded-md bg-blue-500 text-white shrink-0">POST</span>
+            <div>
+              <code class="font-mono">/v1/messages</code>
+              <p class="text-sm mt-1" style="color: var(--text-muted);">Anthropic 兼容的消息 API (需要认证)</p>
             </div>
-            <p class="text-sm" style="color: var(--text-muted);">Anthropic 兼容的消息 API (需要认证)</p>
           </div>
         </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">💡 使用示例</h2>
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">OpenAI SDK (Python)</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">💡</div>
+          <h2 class="text-2xl font-semibold">使用示例</h2>
+        </div>
+
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-lg font-medium mb-3 flex items-center gap-2">
+              <span class="w-6 h-6 rounded bg-yellow-500/20 text-yellow-400 flex items-center justify-center text-xs">🐍</span>
+              OpenAI SDK (Python)
+            </h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 from openai import OpenAI
 
 client = OpenAI(
@@ -650,9 +1110,14 @@ response = client.chat.completions.create(
 
 for chunk in response:
     print(chunk.choices[0].delta.content, end="")</pre>
+          </div>
 
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">Anthropic SDK (Python)</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
+          <div>
+            <h3 class="text-lg font-medium mb-3 flex items-center gap-2">
+              <span class="w-6 h-6 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs">🤖</span>
+              Anthropic SDK (Python)
+            </h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 import anthropic
 
 client = anthropic.Anthropic(
@@ -667,9 +1132,14 @@ message = client.messages.create(
 )
 
 print(message.content[0].text)</pre>
+          </div>
 
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">cURL</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+          <div>
+            <h3 class="text-lg font-medium mb-3 flex items-center gap-2">
+              <span class="w-6 h-6 rounded bg-green-500/20 text-green-400 flex items-center justify-center text-xs">$</span>
+              cURL
+            </h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 curl http://localhost:8000/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_PROXY_API_KEY" \\
   -H "Content-Type: application/json" \\
@@ -677,13 +1147,18 @@ curl http://localhost:8000/v1/chat/completions \\
     "model": "claude-sonnet-4-5",
     "messages": [{{"role": "user", "content": "Hello!"}}]
   }}'</pre>
+          </div>
+        </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">🤖 可用模型</h2>
-        <ul class="grid md:grid-cols-2 gap-2">
-          {"".join([f'<li style="background: var(--bg-input); border: 1px solid var(--border);" class="px-4 py-2 rounded text-sm"><code>{m}</code></li>' for m in AVAILABLE_MODELS])}
-        </ul>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🤖</div>
+          <h2 class="text-2xl font-semibold">可用模型</h2>
+        </div>
+        <div class="grid md:grid-cols-2 gap-3">
+          {"".join([f'<div class="px-4 py-3 rounded-lg flex items-center gap-3" style="background: var(--bg-input); border: 1px solid var(--border);"><span class="w-2 h-2 rounded-full bg-green-400"></span><code class="text-sm">{m}</code></div>' for m in AVAILABLE_MODELS])}
+        </div>
       </section>
     </div>
   </main>
@@ -704,25 +1179,33 @@ def render_playground_page() -> str:
   {COMMON_NAV}
 
   <main class="max-w-7xl mx-auto px-4 py-12">
-    <h1 class="text-4xl font-bold mb-8">🎮 API Playground</h1>
+    <div class="text-center mb-10">
+      <h1 class="text-4xl font-bold mb-4">
+        <span class="gradient-text">API Playground</span>
+      </h1>
+      <p style="color: var(--text-muted);">在线测试 KiroGate API</p>
+    </div>
 
-    <div class="grid md:grid-cols-2 gap-6">
+    <div class="grid lg:grid-cols-2 gap-6">
       <!-- Request Panel -->
       <div class="card">
-        <h2 class="text-xl font-semibold mb-4">请求配置</h2>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">⚙️</div>
+          <h2 class="text-xl font-semibold">请求配置</h2>
+        </div>
 
-        <div class="space-y-4">
+        <div class="space-y-5">
           <div>
-            <label class="block text-sm mb-1" style="color: var(--text-muted);">API Key</label>
-            <div class="relative flex gap-1">
+            <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">API Key</label>
+            <div class="relative flex gap-2">
               <div class="relative flex-1">
-                <input type="password" id="apiKey" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="w-full rounded px-3 py-2 pr-10" placeholder="sk-xxx 或 PROXY_KEY 或 PROXY_KEY:REFRESH_TOKEN" oninput="updateAuthMode()">
-                <button type="button" onclick="toggleKeyVisibility()" class="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:opacity-70" style="color: var(--text-muted);" title="显示/隐藏">
+                <input type="password" id="apiKey" class="w-full rounded-lg px-4 py-2.5 pr-10" placeholder="sk-xxx 或 PROXY_KEY 或 PROXY_KEY:REFRESH_TOKEN" oninput="updateAuthMode()">
+                <button type="button" onclick="toggleKeyVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:opacity-70 transition-opacity" style="color: var(--text-muted);" title="显示/隐藏">
                   <span id="toggleKeyIcon">👁️</span>
                 </button>
               </div>
-              <button type="button" onclick="copyApiKey()" class="px-2 py-2 rounded hover:opacity-70" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);" title="复制">📋</button>
-              <button type="button" onclick="clearApiKey()" class="px-2 py-2 rounded hover:opacity-70" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);" title="清除">🗑️</button>
+              <button type="button" onclick="copyApiKey(this)" class="px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);" title="复制">📋</button>
+              <button type="button" onclick="clearApiKey()" class="px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);" title="清除">🗑️</button>
             </div>
             <div id="authModeDisplay" class="mt-2 text-sm flex items-center gap-2">
               <span id="authModeIcon">🔒</span>
@@ -731,49 +1214,57 @@ def render_playground_page() -> str:
           </div>
 
           <div>
-            <label class="block text-sm mb-1" style="color: var(--text-muted);">模型</label>
-            <select id="model" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="w-full rounded px-3 py-2">
+            <label class="block text-sm font-medium mb-2" style="color: var(--text-muted);">模型</label>
+            <select id="model" class="w-full rounded-lg px-4 py-2.5">
               {models_options}
             </select>
           </div>
 
           <div>
-            <div class="flex justify-between items-center mb-1">
-              <label class="text-sm" style="color: var(--text-muted);">消息内容</label>
-              <button type="button" onclick="clearMessage()" class="text-xs px-2 py-1 rounded hover:opacity-70" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);">🗑️ 清除</button>
+            <div class="flex justify-between items-center mb-2">
+              <label class="text-sm font-medium" style="color: var(--text-muted);">消息内容</label>
+              <button type="button" onclick="clearMessage()" class="text-xs px-2.5 py-1 rounded-lg hover:opacity-80 transition-opacity" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-muted);">🗑️ 清除</button>
             </div>
-            <textarea id="message" rows="4" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="w-full rounded px-3 py-2" placeholder="输入你的消息...">Hello! Please introduce yourself briefly.</textarea>
+            <textarea id="message" rows="4" class="w-full rounded-lg px-4 py-3" placeholder="输入你的消息...">Hello! Please introduce yourself briefly.</textarea>
           </div>
 
-          <div class="flex items-center gap-4">
-            <label class="flex items-center gap-2">
-              <input type="checkbox" id="stream" checked class="rounded">
+          <div class="flex flex-wrap items-center gap-4 p-4 rounded-lg" style="background: var(--bg-input);">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="stream" checked class="w-4 h-4 rounded accent-indigo-500">
               <span class="text-sm">流式响应</span>
             </label>
-            <label class="flex items-center gap-2">
-              <input type="radio" name="apiFormat" value="openai" checked>
-              <span class="text-sm">OpenAI 格式</span>
-            </label>
-            <label class="flex items-center gap-2">
-              <input type="radio" name="apiFormat" value="anthropic">
-              <span class="text-sm">Anthropic 格式</span>
-            </label>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="apiFormat" value="openai" checked class="w-4 h-4 accent-indigo-500">
+                <span class="text-sm">OpenAI 格式</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="apiFormat" value="anthropic" class="w-4 h-4 accent-indigo-500">
+                <span class="text-sm">Anthropic 格式</span>
+              </label>
+            </div>
           </div>
 
-          <button id="sendBtn" onclick="sendRequest()" class="btn-primary w-full py-3 text-base sm:text-lg">
-            <span id="sendBtnText">🚀 发送请求</span>
-            <span id="sendBtnLoading" class="hidden"><span class="loading-spinner mr-2"></span>请求中...</span>
+          <button id="sendBtn" onclick="sendRequest()" class="btn-primary w-full py-3.5 text-lg font-medium">
+            <span id="sendBtnText" class="flex items-center justify-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              发送请求
+            </span>
+            <span id="sendBtnLoading" class="hidden flex items-center justify-center gap-2"><span class="loading-spinner mr-2"></span>请求中...</span>
           </button>
         </div>
       </div>
 
       <!-- Response Panel -->
       <div class="card">
-        <h2 class="text-lg sm:text-xl font-semibold mb-4">响应结果</h2>
-        <div id="response" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="rounded p-3 sm:p-4 min-h-[250px] sm:min-h-[300px] whitespace-pre-wrap text-xs sm:text-sm font-mono overflow-auto">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📤</div>
+          <h2 class="text-xl font-semibold">响应结果</h2>
+        </div>
+        <div id="response" class="rounded-xl p-4 min-h-[300px] whitespace-pre-wrap text-sm font-mono overflow-auto" style="background: var(--bg-input); border: 1px solid var(--border);">
           <span style="color: var(--text-muted);">响应将显示在这里...</span>
         </div>
-        <div id="stats" class="mt-3 sm:mt-4 text-xs sm:text-sm" style="color: var(--text-muted);"></div>
+        <div id="stats" class="mt-4 text-sm flex items-center gap-2" style="color: var(--text-muted);"></div>
       </div>
     </div>
   </main>
@@ -793,14 +1284,15 @@ def render_playground_page() -> str:
       }}
     }}
 
-    function copyApiKey() {{
+    function copyApiKey(btn) {{
       const input = document.getElementById('apiKey');
       if (!input.value) return;
       navigator.clipboard.writeText(input.value);
-      const btn = event.target.closest('button');
-      const original = btn.textContent;
-      btn.textContent = '✅';
-      setTimeout(() => btn.textContent = original, 1000);
+      if (btn) {{
+        const original = btn.textContent;
+        btn.textContent = '✅';
+        setTimeout(() => btn.textContent = original, 1000);
+      }}
     }}
 
     function clearApiKey() {{
@@ -987,21 +1479,41 @@ def render_deploy_page() -> str:
   {COMMON_NAV}
 
   <main class="max-w-7xl mx-auto px-4 py-12">
-    <h1 class="text-4xl font-bold mb-8">🚀 部署指南</h1>
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-bold mb-4">
+        <span class="gradient-text">部署指南</span>
+      </h1>
+      <p style="color: var(--text-muted);">快速部署你自己的 KiroGate 实例</p>
+    </div>
 
     <div class="space-y-8">
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">📋 环境要求</h2>
-        <ul class="list-disc list-inside space-y-2" style="color: var(--text-muted);">
-          <li>Python 3.10+</li>
-          <li>pip 或 poetry</li>
-          <li>网络连接（需访问 AWS CodeWhisperer API）</li>
-        </ul>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📋</div>
+          <h2 class="text-2xl font-semibold">环境要求</h2>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-4">
+          <div class="p-4 rounded-xl text-center" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <div class="text-3xl mb-2">🐍</div>
+            <div class="font-medium">Python 3.10+</div>
+          </div>
+          <div class="p-4 rounded-xl text-center" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <div class="text-3xl mb-2">📦</div>
+            <div class="font-medium">pip 或 poetry</div>
+          </div>
+          <div class="p-4 rounded-xl text-center" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <div class="text-3xl mb-2">🌐</div>
+            <div class="font-medium">网络连接</div>
+          </div>
+        </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">⚙️ 环境变量配置</h2>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">⚙️</div>
+          <h2 class="text-2xl font-semibold">环境变量配置</h2>
+        </div>
+        <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 # 必填项
 PROXY_API_KEY="your-secret-api-key"      # 代理服务器密码
 
@@ -1017,19 +1529,22 @@ LOG_LEVEL="INFO"                          # 日志级别
 # 或使用凭证文件
 KIRO_CREDS_FILE="~/.kiro/credentials.json"</pre>
 
-        <div style="background: var(--bg-input); border: 1px solid var(--border);" class="p-4 rounded-lg mt-4">
-          <p class="text-sm font-semibold mb-2" style="color: var(--text);">配置说明：</p>
-          <ul class="text-sm space-y-1" style="color: var(--text-muted);">
-            <li>• <strong>简单模式</strong>：必须配置 <code>REFRESH_TOKEN</code> 环境变量</li>
-            <li>• <strong>组合模式（推荐）</strong>：无需配置 <code>REFRESH_TOKEN</code>，用户在请求中直接传递</li>
+        <div class="p-4 rounded-xl mt-4" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(99, 102, 241, 0.2);">
+          <p class="text-sm font-semibold mb-2" style="color: var(--text);">💡 配置说明</p>
+          <ul class="text-sm space-y-1.5" style="color: var(--text-muted);">
+            <li>• <strong>简单模式</strong>：必须配置 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-input);">REFRESH_TOKEN</code> 环境变量</li>
+            <li>• <strong>组合模式（推荐）</strong>：无需配置 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-input);">REFRESH_TOKEN</code>，用户在请求中直接传递</li>
             <li>• <strong>多租户部署</strong>：使用组合模式可以让多个用户共享同一网关实例</li>
           </ul>
         </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">🐍 本地运行</h2>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🐍</div>
+          <h2 class="text-2xl font-semibold">本地运行</h2>
+        </div>
+        <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 # 克隆仓库
 git clone https://github.com/dext7r/KiroGate.git
 cd KiroGate
@@ -1046,12 +1561,15 @@ python main.py</pre>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4 flex items-center gap-2">
-          <span>🐳</span>
-          <span>Docker 部署</span>
-        </h2>
-        <h3 class="text-lg font-medium mb-2 text-indigo-400">Docker Compose（推荐）</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm mb-4">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🐳</div>
+          <h2 class="text-2xl font-semibold">Docker 部署</h2>
+        </div>
+
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-lg font-medium mb-3 text-emerald-400">Docker Compose（推荐）</h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 # 复制配置文件
 cp .env.example .env
 # 编辑 .env 填写你的凭证
@@ -1061,20 +1579,27 @@ docker-compose up -d
 
 # 查看日志
 docker logs -f kirogate</pre>
+          </div>
 
-        <h3 class="text-lg font-medium mb-2 mt-4 text-indigo-400">手动 Docker 运行</h3>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+          <div>
+            <h3 class="text-lg font-medium mb-3 text-blue-400">手动 Docker 运行</h3>
+            <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 docker build -t kirogate .
 docker run -d -p 8000:8000 \\
   -v kirogate_data:/app/data \\
   -e PROXY_API_KEY="your-key" \\
   -e ADMIN_PASSWORD="your-admin-pwd" \\
   --name kirogate kirogate</pre>
+          </div>
+        </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">🚀 Fly.io 部署</h2>
-        <pre style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);" class="p-4 rounded-lg overflow-x-auto text-sm">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🚀</div>
+          <h2 class="text-2xl font-semibold">Fly.io 部署</h2>
+        </div>
+        <pre class="p-4 rounded-lg overflow-x-auto text-sm">
 # 1. 安装 Fly CLI 并登录
 curl -L https://fly.io/install.sh | sh
 fly auth login
@@ -1095,42 +1620,51 @@ fly deploy</pre>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">💾 数据持久化</h2>
-        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);" class="p-4 rounded-lg mb-4">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--danger), #f97316);">💾</div>
+          <h2 class="text-2xl font-semibold">数据持久化</h2>
+        </div>
+        <div class="p-4 rounded-xl mb-4" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);">
           <p class="text-sm font-semibold text-red-400">⚠️ 重要提醒</p>
           <p class="text-sm mt-1" style="color: var(--text-muted);">用户数据（数据库）需要持久化存储，否则每次部署会丢失所有用户、Token 和 API Key！</p>
         </div>
-        <div class="space-y-3">
-          <div style="background: var(--bg-input);" class="p-3 rounded-lg">
-            <p class="font-medium text-green-400">Docker Compose</p>
-            <p class="text-sm" style="color: var(--text-muted);">已配置命名卷 <code>kirogate_data:/app/data</code>，使用 <code>docker-compose down</code> 保留数据</p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <p class="font-medium text-emerald-400 mb-2">🐳 Docker Compose</p>
+            <p class="text-sm" style="color: var(--text-muted);">已配置命名卷 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-card);">kirogate_data:/app/data</code>，使用 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-card);">docker-compose down</code> 保留数据</p>
           </div>
-          <div style="background: var(--bg-input);" class="p-3 rounded-lg">
-            <p class="font-medium text-blue-400">Fly.io</p>
-            <p class="text-sm" style="color: var(--text-muted);">需手动创建卷：<code>fly volumes create kirogate_data --region nrt --size 1</code></p>
+          <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+            <p class="font-medium text-blue-400 mb-2">🚀 Fly.io</p>
+            <p class="text-sm" style="color: var(--text-muted);">需手动创建卷：<code class="px-1.5 py-0.5 rounded" style="background: var(--bg-card);">fly volumes create kirogate_data --region nrt --size 1</code></p>
           </div>
         </div>
       </section>
 
       <section class="card">
-        <h2 class="text-2xl font-semibold mb-4">🔐 获取 Refresh Token</h2>
-        <div style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(16, 185, 129, 0.1)); border: 1px solid #22c55e;" class="p-4 rounded-lg mb-4">
-          <p class="text-sm font-semibold mb-2 text-green-400">🌐 方式一：浏览器获取（推荐）</p>
-          <ol class="text-sm space-y-1" style="color: var(--text-muted);">
-            <li>1. 打开 <a href="https://app.kiro.dev/account/usage" target="_blank" class="text-indigo-400 hover:underline">https://app.kiro.dev/account/usage</a> 并登录</li>
-            <li>2. 按 <kbd class="px-1 py-0.5 rounded text-xs" style="background: var(--bg-input); border: 1px solid var(--border);">F12</kbd> 打开开发者工具</li>
-            <li>3. 点击 <strong>应用/Application</strong> → <strong>存储/Storage</strong> → <strong>Cookie</strong></li>
-            <li>4. 选择 <code style="background: var(--bg-input);" class="px-1 rounded">https://app.kiro.dev</code></li>
-            <li>5. 复制 <code class="text-green-400">RefreshToken</code> 的值</li>
-          </ol>
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">🔐</div>
+          <h2 class="text-2xl font-semibold">获取 Refresh Token</h2>
         </div>
 
-        <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1)); border: 1px solid var(--primary);" class="p-4 rounded-lg">
-          <p class="text-sm font-semibold mb-2" style="color: var(--text);">🛠️ 方式二：Kiro Account Manager</p>
-          <p class="text-sm" style="color: var(--text-muted);">
-            使用 <a href="https://github.com/chaogei/Kiro-account-manager" class="text-indigo-400 hover:underline font-medium" target="_blank">Kiro Account Manager</a>
-            可以轻松管理多个账号的 Refresh Token。
-          </p>
+        <div class="space-y-4">
+          <div class="p-4 rounded-xl" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05)); border: 1px solid rgba(16, 185, 129, 0.2);">
+            <p class="text-sm font-semibold mb-3 text-emerald-400">🌐 方式一：浏览器获取（推荐）</p>
+            <ol class="text-sm space-y-2" style="color: var(--text-muted);">
+              <li><span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2" style="background: var(--primary); color: white;">1</span>打开 <a href="https://app.kiro.dev/account/usage" target="_blank" class="text-indigo-400 hover:underline">https://app.kiro.dev/account/usage</a> 并登录</li>
+              <li><span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2" style="background: var(--primary); color: white;">2</span>按 <kbd class="px-1.5 py-0.5 rounded text-xs" style="background: var(--bg-input); border: 1px solid var(--border);">F12</kbd> 打开开发者工具</li>
+              <li><span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2" style="background: var(--primary); color: white;">3</span>点击 <strong>应用/Application</strong> → <strong>存储/Storage</strong> → <strong>Cookie</strong></li>
+              <li><span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2" style="background: var(--primary); color: white;">4</span>选择 <code class="px-1.5 py-0.5 rounded" style="background: var(--bg-input);">https://app.kiro.dev</code></li>
+              <li><span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2" style="background: var(--primary); color: white;">5</span>复制 <code class="text-emerald-400">RefreshToken</code> 的值</li>
+            </ol>
+          </div>
+
+          <div class="p-4 rounded-xl" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(99, 102, 241, 0.2);">
+            <p class="text-sm font-semibold mb-2" style="color: var(--text);">🛠️ 方式二：Kiro Account Manager</p>
+            <p class="text-sm" style="color: var(--text-muted);">
+              使用 <a href="https://github.com/chaogei/Kiro-account-manager" class="text-indigo-400 hover:underline font-medium" target="_blank">Kiro Account Manager</a>
+              可以轻松管理多个账号的 Refresh Token。
+            </p>
+          </div>
         </div>
       </section>
     </div>
@@ -1143,8 +1677,8 @@ fly deploy</pre>
 
 def render_status_page(status_data: dict) -> str:
     """Render the status page."""
-    status_color = "#22c55e" if status_data.get("status") == "healthy" else "#ef4444"
-    token_color = "#22c55e" if status_data.get("token_valid") else "#ef4444"
+    status_color = "#10b981" if status_data.get("status") == "healthy" else "#ef4444"
+    token_color = "#10b981" if status_data.get("token_valid") else "#ef4444"
 
     return f'''<!DOCTYPE html>
 <html lang="zh">
@@ -1155,48 +1689,61 @@ def render_status_page(status_data: dict) -> str:
   {COMMON_NAV}
 
   <main class="max-w-4xl mx-auto px-4 py-12">
-    <h1 class="text-4xl font-bold mb-8">📊 系统状态</h1>
+    <div class="text-center mb-10">
+      <h1 class="text-4xl font-bold mb-4">
+        <span class="gradient-text">系统状态</span>
+      </h1>
+      <p style="color: var(--text-muted);">实时监控服务运行状态</p>
+    </div>
 
     <div class="grid md:grid-cols-2 gap-6 mb-8">
-      <div class="card">
-        <h2 class="text-lg font-semibold mb-4">服务状态</h2>
-        <div class="flex items-center gap-3">
-          <div class="w-4 h-4 rounded-full" style="background: {status_color};"></div>
-          <span class="text-2xl font-bold">{status_data.get("status", "unknown").upper()}</span>
+      <div class="card text-center stat-card">
+        <h2 class="text-lg font-semibold mb-4" style="color: var(--text-muted);">服务状态</h2>
+        <div class="flex items-center justify-center gap-3">
+          <div class="w-4 h-4 rounded-full animate-pulse" style="background: {status_color};"></div>
+          <span class="text-3xl font-bold">{status_data.get("status", "unknown").upper()}</span>
         </div>
       </div>
-      <div class="card">
-        <h2 class="text-lg font-semibold mb-4">Token 状态</h2>
-        <div class="flex items-center gap-3">
+      <div class="card text-center">
+        <h2 class="text-lg font-semibold mb-4" style="color: var(--text-muted);">Token 状态</h2>
+        <div class="flex items-center justify-center gap-3">
           <div class="w-4 h-4 rounded-full" style="background: {token_color};"></div>
-          <span class="text-2xl font-bold">{"有效" if status_data.get("token_valid") else "无效/未配置"}</span>
+          <span class="text-3xl font-bold">{"有效" if status_data.get("token_valid") else "无效/未配置"}</span>
         </div>
       </div>
     </div>
 
     <div class="card mb-8">
-      <h2 class="text-xl font-semibold mb-4">详细信息</h2>
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📊</div>
+        <h2 class="text-xl font-semibold">详细信息</h2>
+      </div>
       <div class="grid grid-cols-2 gap-4">
-        <div>
-          <p class="text-sm" style="color: var(--text-muted);">版本</p>
-          <p class="font-mono">{status_data.get("version", "unknown")}</p>
+        <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+          <p class="text-sm mb-1" style="color: var(--text-muted);">版本</p>
+          <p class="font-mono text-lg font-medium">{status_data.get("version", "unknown")}</p>
         </div>
-        <div>
-          <p class="text-sm" style="color: var(--text-muted);">缓存大小</p>
-          <p class="font-mono">{status_data.get("cache_size", 0)}</p>
+        <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+          <p class="text-sm mb-1" style="color: var(--text-muted);">缓存大小</p>
+          <p class="font-mono text-lg font-medium">{status_data.get("cache_size", 0)}</p>
         </div>
-        <div>
-          <p class="text-sm" style="color: var(--text-muted);">最后更新</p>
+        <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+          <p class="text-sm mb-1" style="color: var(--text-muted);">最后更新</p>
           <p class="font-mono text-sm">{status_data.get("cache_last_update", "N/A")}</p>
         </div>
-        <div>
-          <p class="text-sm" style="color: var(--text-muted);">时间戳</p>
+        <div class="p-4 rounded-xl" style="background: var(--bg-input); border: 1px solid var(--border);">
+          <p class="text-sm mb-1" style="color: var(--text-muted);">时间戳</p>
           <p class="font-mono text-sm">{status_data.get("timestamp", "N/A")}</p>
         </div>
       </div>
     </div>
 
-    <p class="text-sm text-center" style="color: var(--text-muted);">页面每 30 秒自动刷新</p>
+    <p class="text-sm text-center" style="color: var(--text-muted);">
+      <span class="inline-flex items-center gap-2">
+        <span class="loading-spinner"></span>
+        页面每 30 秒自动刷新
+      </span>
+    </p>
   </main>
 
   {COMMON_FOOTER}
@@ -1210,49 +1757,52 @@ def render_dashboard_page() -> str:
 <html lang="zh">
 <head>{COMMON_HEAD}
 <style>
-.mc{{background:var(--bg-card);border:1px solid var(--border);border-radius:.75rem;padding:1.25rem;text-align:center;transition:all .3s ease}}
-.mc:hover{{border-color:var(--primary);transform:translateY(-2px);box-shadow:0 8px 25px rgba(99,102,241,0.15)}}
-.mi{{font-size:1.75rem;margin-bottom:.75rem}}
+.mc{{background:var(--bg-card);border:1px solid var(--border);border-radius:1rem;padding:1.25rem;text-align:center;transition:all .3s ease}}
+.mc:hover{{border-color:var(--primary);transform:translateY(-2px);box-shadow:var(--shadow-lg),var(--glow)}}
+.mi{{font-size:2rem;margin-bottom:.75rem}}
 .stat-value{{font-size:1.75rem;font-weight:700;line-height:1.2}}
-.stat-label{{font-size:.75rem;margin-top:.5rem;opacity:.7}}
-.chart-card{{background:var(--bg-card);border:1px solid var(--border);border-radius:.75rem;padding:1.5rem}}
+.stat-label{{font-size:.75rem;margin-top:.5rem;color:var(--text-muted)}}
+.chart-card{{background:var(--bg-card);border:1px solid var(--border);border-radius:1rem;padding:1.5rem;box-shadow:var(--shadow)}}
 .chart-title{{font-size:1rem;font-weight:600;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}}
 </style>
 </head>
 <body>
   {COMMON_NAV}
   <main class="max-w-7xl mx-auto px-4 py-8">
-    <div class="flex justify-between items-center mb-8">
-      <h1 class="text-3xl font-bold flex items-center gap-3">
-        <span class="text-4xl">📊</span>
-        <span>Dashboard</span>
-      </h1>
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">
+          <span class="gradient-text">Dashboard</span>
+        </h1>
+        <p class="text-sm mt-1" style="color: var(--text-muted);">实时监控请求统计</p>
+      </div>
       <button onclick="refreshData()" class="btn-primary flex items-center gap-2">
-        <span>🔄</span> 刷新
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        刷新
       </button>
     </div>
 
     <!-- Primary Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 kpi-grid">
       <div class="mc">
         <div class="mi">📈</div>
         <div class="stat-value text-indigo-400" id="totalRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">总请求</div>
+        <div class="stat-label">总请求</div>
       </div>
       <div class="mc">
         <div class="mi">✅</div>
-        <div class="stat-value text-green-400" id="successRate">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">成功率</div>
+        <div class="stat-value text-emerald-400" id="successRate">-</div>
+        <div class="stat-label">成功率</div>
       </div>
       <div class="mc">
         <div class="mi">⏱️</div>
-        <div class="stat-value text-yellow-400" id="avgResponseTime">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">平均耗时</div>
+        <div class="stat-value text-amber-400" id="avgResponseTime">-</div>
+        <div class="stat-label">平均耗时</div>
       </div>
       <div class="mc">
         <div class="mi">🕐</div>
         <div class="stat-value text-purple-400" id="uptime">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">运行时长</div>
+        <div class="stat-label">运行时长</div>
       </div>
     </div>
 
@@ -1261,22 +1811,22 @@ def render_dashboard_page() -> str:
       <div class="mc">
         <div class="mi">⚡</div>
         <div class="stat-value text-blue-400" style="font-size:1.5rem" id="streamRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">流式请求</div>
+        <div class="stat-label">流式请求</div>
       </div>
       <div class="mc">
         <div class="mi">💾</div>
         <div class="stat-value text-cyan-400" style="font-size:1.5rem" id="nonStreamRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">非流式请求</div>
+        <div class="stat-label">非流式请求</div>
       </div>
       <div class="mc">
         <div class="mi">❌</div>
         <div class="stat-value text-red-400" style="font-size:1.5rem" id="failedRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">失败请求</div>
+        <div class="stat-label">失败请求</div>
       </div>
       <div class="mc">
         <div class="mi">🤖</div>
         <div class="stat-value text-emerald-400" style="font-size:1.25rem" id="topModel">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">热门模型</div>
+        <div class="stat-label">热门模型</div>
       </div>
     </div>
 
@@ -1284,24 +1834,30 @@ def render_dashboard_page() -> str:
     <div class="grid grid-cols-2 gap-4 mb-8">
       <div class="mc">
         <div class="mi">🟢</div>
-        <div class="stat-value text-green-400" style="font-size:1.5rem" id="openaiRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">OpenAI API</div>
+        <div class="stat-value text-emerald-400" style="font-size:1.5rem" id="openaiRequests">-</div>
+        <div class="stat-label">OpenAI API</div>
       </div>
       <div class="mc">
         <div class="mi">🟣</div>
         <div class="stat-value text-purple-400" style="font-size:1.5rem" id="anthropicRequests">-</div>
-        <div class="stat-label" style="color:var(--text-muted)">Anthropic API</div>
+        <div class="stat-label">Anthropic API</div>
       </div>
     </div>
 
     <!-- Charts -->
     <div class="grid lg:grid-cols-2 gap-6 mb-8">
       <div class="chart-card">
-        <h2 class="chart-title">📈 24小时请求趋势</h2>
+        <h2 class="chart-title">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📈</span>
+          24小时请求趋势
+        </h2>
         <div id="latencyChart" style="height:280px"></div>
       </div>
       <div class="chart-card">
-        <h2 class="chart-title">📊 状态分布</h2>
+        <h2 class="chart-title">
+          <span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📊</span>
+          状态分布
+        </h2>
         <div style="height:280px;position:relative">
           <canvas id="statusChart"></canvas>
         </div>
@@ -1310,9 +1866,12 @@ def render_dashboard_page() -> str:
 
     <!-- Recent Requests -->
     <div class="chart-card">
-      <h2 class="chart-title">📋 最近请求</h2>
+      <h2 class="chart-title">
+        <span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm" style="background: linear-gradient(135deg, var(--primary), var(--accent));">📋</span>
+        最近请求
+      </h2>
       <div class="table-responsive">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm data-table">
           <thead>
             <tr class="text-left" style="color:var(--text-muted);border-bottom:1px solid var(--border)">
               <th class="py-3 px-3">时间</th>
@@ -1333,7 +1892,8 @@ def render_dashboard_page() -> str:
   {COMMON_FOOTER}
   <script>
 let lc,sc;
-const START_TIME = new Date('2025-12-25T00:00:00').getTime();
+const START_TIME = null;
+const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 async function refreshData(){{
   try{{
     const r=await fetch('/api/metrics'),d=await r.json();
@@ -1341,9 +1901,9 @@ async function refreshData(){{
     document.getElementById('successRate').textContent=d.totalRequests>0?((d.successRequests/d.totalRequests)*100).toFixed(1)+'%':'0%';
     document.getElementById('avgResponseTime').textContent=(d.avgResponseTime||0).toFixed(0)+'ms';
 
-    // Calculate uptime from fixed start time
+    const startTime = d.startTime || START_TIME || Date.now();
     const now=Date.now();
-    const u=Math.floor((now-START_TIME)/1000);
+    const u=Math.max(0, Math.floor((now-startTime)/1000));
     const days=Math.floor(u/86400);
     const hours=Math.floor((u%86400)/3600);
     const mins=Math.floor((u%3600)/60);
@@ -1370,7 +1930,6 @@ async function refreshData(){{
     document.getElementById('openaiRequests').textContent=(d.apiTypeUsage||{{}}).openai||0;
     document.getElementById('anthropicRequests').textContent=(d.apiTypeUsage||{{}}).anthropic||0;
 
-    // Update 24-hour chart
     const hr=d.hourlyRequests||[];
     lc.setOption({{
       xAxis:{{data:hr.map(h=>new Date(h.hour).getHours()+':00')}},
@@ -1383,11 +1942,11 @@ async function refreshData(){{
     const rq=(d.recentRequests||[]).slice(-10).reverse();
     const tb=document.getElementById('recentRequestsTable');
     tb.innerHTML=rq.length?rq.map(q=>`
-      <tr style="border-bottom:1px solid var(--border)">
+      <tr class="table-row">
         <td class="py-3 px-3">${{new Date(q.timestamp).toLocaleTimeString()}}</td>
-        <td class="py-3 px-3"><span class="text-xs px-2 py-1 rounded ${{q.apiType==='anthropic'?'bg-purple-600':'bg-green-600'}} text-white">${{q.apiType}}</span></td>
+        <td class="py-3 px-3"><span class="text-xs px-2 py-1 rounded-md ${{q.apiType==='anthropic'?'bg-purple-500/20 text-purple-400':'bg-emerald-500/20 text-emerald-400'}}">${{q.apiType}}</span></td>
         <td class="py-3 px-3 font-mono text-xs">${{q.path}}</td>
-        <td class="py-3 px-3 ${{q.status<400?'text-green-400':'text-red-400'}}">${{q.status}}</td>
+        <td class="py-3 px-3 ${{q.status<400?'text-emerald-400':'text-red-400'}}">${{q.status}}</td>
         <td class="py-3 px-3">${{q.duration.toFixed(0)}}ms</td>
         <td class="py-3 px-3">${{q.model||'-'}}</td>
       </tr>`).join(''):'<tr><td colspan="6" class="py-6 text-center" style="color:var(--text-muted)">暂无请求</td></tr>';
@@ -1396,10 +1955,10 @@ async function refreshData(){{
 
 lc=echarts.init(document.getElementById('latencyChart'));
 lc.setOption({{
-  tooltip:{{trigger:'axis',backgroundColor:'rgba(30,41,59,0.95)',borderColor:'#334155',textStyle:{{color:'#e2e8f0'}}}},
+  tooltip:{{trigger:'axis',backgroundColor:isDark?'rgba(17,24,39,0.95)':'rgba(255,255,255,0.95)',borderColor:isDark?'#334155':'#e2e8f0',textStyle:{{color:isDark?'#e2e8f0':'#0f172a'}}}},
   grid:{{left:'3%',right:'4%',bottom:'3%',containLabel:true}},
-  xAxis:{{type:'category',data:[],axisLabel:{{color:'#94a3b8',fontSize:11}},axisLine:{{lineStyle:{{color:'#334155'}}}}}},
-  yAxis:{{type:'value',name:'请求数',nameTextStyle:{{color:'#94a3b8'}},axisLabel:{{color:'#94a3b8'}},axisLine:{{lineStyle:{{color:'#334155'}}}},splitLine:{{lineStyle:{{color:'#1e293b'}}}}}},
+  xAxis:{{type:'category',data:[],axisLabel:{{color:isDark?'#94a3b8':'#64748b',fontSize:11}},axisLine:{{lineStyle:{{color:isDark?'#334155':'#e2e8f0'}}}}}},
+  yAxis:{{type:'value',name:'请求数',nameTextStyle:{{color:isDark?'#94a3b8':'#64748b'}},axisLabel:{{color:isDark?'#94a3b8':'#64748b'}},axisLine:{{lineStyle:{{color:isDark?'#334155':'#e2e8f0'}}}},splitLine:{{lineStyle:{{color:isDark?'#1e293b':'#f1f5f9'}}}}}},
   series:[{{
     type:'bar',
     data:[],
@@ -1408,7 +1967,7 @@ lc.setOption({{
         {{offset:0,color:'#818cf8'}},
         {{offset:1,color:'#6366f1'}}
       ]),
-      borderRadius:[4,4,0,0]
+      borderRadius:[6,6,0,0]
     }},
     emphasis:{{itemStyle:{{color:'#a5b4fc'}}}}
   }}]
@@ -1418,14 +1977,14 @@ sc=new Chart(document.getElementById('statusChart'),{{
   type:'doughnut',
   data:{{
     labels:['成功','失败'],
-    datasets:[{{data:[0,0],backgroundColor:['#22c55e','#ef4444'],borderWidth:0,hoverOffset:8}}]
+    datasets:[{{data:[0,0],backgroundColor:['#10b981','#ef4444'],borderWidth:0,hoverOffset:8}}]
   }},
   options:{{
     responsive:true,
     maintainAspectRatio:false,
     cutout:'65%',
     plugins:{{
-      legend:{{position:'bottom',labels:{{color:'#94a3b8',padding:20,font:{{size:13}}}}}}
+      legend:{{position:'bottom',labels:{{color:isDark?'#94a3b8':'#64748b',padding:20,font:{{size:13}}}}}}
     }}
   }}
 }});
@@ -1495,7 +2054,8 @@ def render_swagger_page() -> str:
 
 def render_admin_login_page(error: str = "") -> str:
     """Render the admin login page."""
-    error_html = f'<div class="bg-red-500/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg mb-4">{error}</div>' if error else ''
+    safe_error = html.escape(error) if error else ''
+    error_html = f'<div class="bg-red-500/20 border border-red-500 text-red-400 px-4 py-3 rounded-lg mb-4">{safe_error}</div>' if safe_error else ''
 
     return f'''<!DOCTYPE html>
 <html lang="zh">
@@ -1506,9 +2066,9 @@ def render_admin_login_page(error: str = "") -> str:
   <meta name="robots" content="noindex, nofollow">
   <script src="{PROXY_BASE}/proxy/cdn.tailwindcss.com"></script>
   <style>
-    :root {{ --bg-main: #ffffff; --bg-card: #f8fafc; --text: #1e293b; --text-muted: #64748b; --border: #e2e8f0; --primary: #6366f1; --bg-input: #f1f5f9; }}
-    .dark {{ --bg-main: #0f172a; --bg-card: #1e293b; --text: #e2e8f0; --text-muted: #94a3b8; --border: #334155; --bg-input: #334155; }}
-    body {{ background: var(--bg-main); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; transition: background .3s, color .3s; }}
+    :root {{ --bg-main: #f4f7fb; --bg-card: rgba(255, 255, 255, 0.82); --text: #0f172a; --text-muted: #64748b; --border: rgba(148, 163, 184, 0.35); --primary: #38bdf8; --bg-input: rgba(255, 255, 255, 0.9); }}
+    .dark {{ --bg-main: #05070f; --bg-card: rgba(15, 23, 42, 0.8); --text: #e2e8f0; --text-muted: #94a3b8; --border: rgba(148, 163, 184, 0.2); --bg-input: rgba(15, 23, 42, 0.85); }}
+    body {{ background: var(--bg-main); color: var(--text); font-family: 'Sora', 'Noto Sans SC', system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; transition: background .3s, color .3s; }}
     .card {{ background: var(--bg-card); border: 1px solid var(--border); }}
     input {{ background: var(--bg-input); border-color: var(--border); color: var(--text); }}
   </style>
@@ -1571,40 +2131,96 @@ def render_admin_page() -> str:
 <head>{COMMON_HEAD}
   <meta name="robots" content="noindex, nofollow">
   <style>
-    .card {{ background: var(--bg-card); border: 1px solid var(--border); border-radius: .75rem; padding: 1.5rem; }}
-    .btn {{ padding: .5rem 1rem; border-radius: .5rem; font-weight: 500; transition: all .2s; cursor: pointer; }}
-    .btn-primary {{ background: var(--primary); color: white; }}
-    .btn-primary:hover {{ opacity: .9; }}
-    .btn-danger {{ background: #ef4444; color: white; }}
-    .btn-danger:hover {{ opacity: .9; }}
-    .btn-success {{ background: #22c55e; color: white; }}
-    .btn-success:hover {{ opacity: .9; }}
-    .tab {{ padding: .75rem 1.25rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; }}
+    .admin-header {{
+      background: var(--bg-nav);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+    }}
+    .admin-shell {{
+      position: relative;
+    }}
+    .card {{
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }}
+    .admin-tag {{
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }}
+    .btn {{
+      padding: .5rem 1rem;
+      border-radius: .75rem;
+      font-weight: 600;
+      transition: all .2s ease;
+      cursor: pointer;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }}
+    .btn:hover {{
+      border-color: var(--border-dark);
+      transform: translateY(-1px);
+    }}
+    .btn-primary {{
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 70%, var(--accent-2) 120%);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 12px 24px rgba(56, 189, 248, 0.28);
+    }}
+    .btn-primary:hover {{ box-shadow: 0 16px 36px rgba(56, 189, 248, 0.35); }}
+    .btn-danger {{
+      background: rgba(244, 63, 94, 0.18);
+      color: #fecdd3;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+    }}
+    .btn-success {{
+      background: rgba(34, 197, 94, 0.18);
+      color: #bbf7d0;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+    }}
+    .btn:disabled {{ opacity: 0.5; cursor: not-allowed; transform: none; }}
+    .tab {{
+      padding: .75rem 1.25rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .2s ease;
+      letter-spacing: 0.02em;
+    }}
     .tab:hover {{ color: var(--primary); }}
-    .tab.active {{ color: var(--primary); border-bottom-color: var(--primary); }}
+    .tab.active {{
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      text-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+    }}
     .table-row {{ border-bottom: 1px solid var(--border); }}
-    .table-row:hover {{ background: rgba(99,102,241,0.05); }}
+    .table-row:hover {{ background: var(--bg-hover); }}
     .switch {{ position: relative; width: 50px; height: 26px; }}
     .switch input {{ opacity: 0; width: 0; height: 0; }}
     .slider {{ position: absolute; cursor: pointer; inset: 0; background: #475569; border-radius: 26px; transition: .3s; }}
     .slider:before {{ content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .3s; }}
-    input:checked + .slider {{ background: #22c55e; }}
+    input:checked + .slider {{ background: var(--success); }}
     input:checked + .slider:before {{ transform: translateX(24px); }}
     .status-dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
-    .status-ok {{ background: #22c55e; }}
-    .status-error {{ background: #ef4444; }}
+    .status-ok {{ background: var(--success); }}
+    .status-error {{ background: var(--danger); }}
   </style>
 </head>
 <body>
   <!-- Admin Header -->
-  <header style="background: var(--bg-card); border-bottom: 1px solid var(--border);" class="sticky top-0 z-50">
+  <header class="sticky top-0 z-50 admin-header">
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
       <div class="flex items-center gap-4">
         <a href="/" class="flex items-center gap-2 text-xl font-bold" style="color: var(--text); text-decoration: none;">
           <span>⚡</span>
           <span class="hidden sm:inline">KiroGate</span>
         </a>
-        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">🛡️ Admin</span>
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium admin-tag">🛡️ Admin</span>
       </div>
       <nav class="hidden md:flex items-center gap-6">
         <a href="/" style="color: var(--text-muted); text-decoration: none;">首页</a>
@@ -1634,7 +2250,7 @@ def render_admin_page() -> str:
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 py-6">
+  <main class="max-w-7xl mx-auto px-4 py-6 admin-shell">
     <!-- Status Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       <div class="card text-center">
@@ -1647,17 +2263,17 @@ def render_admin_page() -> str:
         </div>
         <div class="text-sm mt-2" style="color: var(--text-muted);">站点开关</div>
       </div>
-      <div class="card text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('donated-tokens')">
+      <div class="card text-center stat-card cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('donated-tokens')">
         <div class="text-2xl mb-2">🔑</div>
         <div class="text-2xl font-bold" id="tokenStatus">-</div>
         <div class="text-sm" style="color: var(--text-muted);">Token 状态</div>
       </div>
-      <div class="card text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('overview')">
+      <div class="card text-center stat-card cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('overview')">
         <div class="text-2xl mb-2">📊</div>
         <div class="text-2xl font-bold" id="totalRequests">-</div>
         <div class="text-sm" style="color: var(--text-muted);">总请求数</div>
       </div>
-      <div class="card text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('tokens')">
+      <div class="card text-center stat-card cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="showTab('tokens')">
         <div class="text-2xl mb-2">👥</div>
         <div class="text-2xl font-bold" id="cachedTokens">-</div>
         <div class="text-sm" style="color: var(--text-muted);">缓存用户</div>
@@ -1700,35 +2316,47 @@ def render_admin_page() -> str:
     <!-- Tab Content: Users -->
     <div id="tab-users" class="tab-content hidden">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">👥 注册用户管理</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="usersSearch" placeholder="搜索用户名..." oninput="filterUsers()"
               class="px-3 py-2 rounded-lg text-sm w-40" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+            <select id="usersStatusFilter" onchange="filterUsers()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+              <option value="">全部状态</option>
+              <option value="false">正常</option>
+              <option value="true">已封禁</option>
+            </select>
+            <input type="number" id="usersTrustLevel" min="0" placeholder="信任等级" oninput="filterUsers()"
+              class="px-3 py-2 rounded-lg text-sm w-28" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
             <select id="usersPageSize" onchange="filterUsers()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
               <option value="10">10/页</option>
               <option value="20" selected>20/页</option>
               <option value="50">50/页</option>
             </select>
+            <button onclick="batchBanUsers()" id="batchBanUsersBtn" class="btn btn-danger text-sm">批量封禁</button>
+            <button onclick="batchUnbanUsers()" id="batchUnbanUsersBtn" class="btn btn-success text-sm">批量解禁</button>
             <button onclick="refreshUsers()" class="btn btn-primary text-sm">刷新</button>
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                <th class="text-left py-3 px-3">
+                  <input type="checkbox" id="selectAllUsers" onchange="toggleSelectAllUsers(this.checked)">
+                </th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('id')">ID ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('username')">用户名 ↕</th>
-                <th class="text-left py-3 px-3">信任等级</th>
+                <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('trust_level')">信任等级 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('token_count')">Token 数 ↕</th>
-                <th class="text-left py-3 px-3">API Key</th>
-                <th class="text-left py-3 px-3">状态</th>
+                <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('api_key_count')">API Key ↕</th>
+                <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('is_banned')">状态 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('created_at')">注册时间 ↕</th>
                 <th class="text-left py-3 px-3">操作</th>
               </tr>
             </thead>
             <tbody id="usersTable">
-              <tr><td colspan="8" class="py-6 text-center" style="color: var(--text-muted);">加载中...</td></tr>
+              <tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">加载中...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1742,7 +2370,7 @@ def render_admin_page() -> str:
     <!-- Tab Content: Donated Tokens -->
     <div id="tab-donated-tokens" class="tab-content hidden">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">🎁 添加 Token 池</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="poolSearch" placeholder="搜索用户名..." oninput="filterPoolTokens()"
@@ -1751,6 +2379,12 @@ def render_admin_page() -> str:
               <option value="">全部可见性</option>
               <option value="public">公开</option>
               <option value="private">私有</option>
+            </select>
+            <select id="poolStatusFilter" onchange="filterPoolTokens()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+              <option value="">全部状态</option>
+              <option value="active">有效</option>
+              <option value="invalid">无效</option>
+              <option value="expired">已过期</option>
             </select>
             <select id="poolPageSize" onchange="filterPoolTokens()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
               <option value="10">10/页</option>
@@ -1762,15 +2396,15 @@ def render_admin_page() -> str:
           </div>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center">
+          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="applyPoolQuickFilter('all')">
             <div class="text-xl font-bold text-green-400" id="poolTotalTokens">-</div>
             <div class="text-xs" style="color: var(--text-muted);">总 Token</div>
           </div>
-          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center">
+          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="applyPoolQuickFilter('active')">
             <div class="text-xl font-bold text-blue-400" id="poolActiveTokens">-</div>
             <div class="text-xs" style="color: var(--text-muted);">有效</div>
           </div>
-          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center">
+          <div style="background: var(--bg-input);" class="p-3 rounded-lg text-center cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all" onclick="applyPoolQuickFilter('public')">
             <div class="text-xl font-bold text-purple-400" id="poolPublicTokens">-</div>
             <div class="text-xs" style="color: var(--text-muted);">公开</div>
           </div>
@@ -1780,7 +2414,7 @@ def render_admin_page() -> str:
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                 <th class="text-left py-3 px-3">
@@ -1811,7 +2445,7 @@ def render_admin_page() -> str:
     <!-- Tab Content: IP Stats -->
     <div id="tab-ip-stats" class="tab-content hidden">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">🌐 IP 请求统计</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="ipStatsSearch" placeholder="搜索IP..." oninput="filterIpStats()"
@@ -1826,7 +2460,7 @@ def render_admin_page() -> str:
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                 <th class="text-left py-3 px-3">
@@ -1853,7 +2487,7 @@ def render_admin_page() -> str:
     <!-- Tab Content: Blacklist -->
     <div id="tab-blacklist" class="tab-content hidden">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">🚫 IP 黑名单</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="blacklistSearch" placeholder="搜索 IP 或原因..." oninput="filterBlacklist()"
@@ -1870,7 +2504,7 @@ def render_admin_page() -> str:
           </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                 <th class="text-left py-3 px-3">
@@ -1902,7 +2536,7 @@ def render_admin_page() -> str:
     <!-- Tab Content: Token Management -->
     <div id="tab-tokens" class="tab-content hidden">
       <div class="card mb-6">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">🔑 缓存的用户 Token</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="tokensSearch" placeholder="搜索 Token..." oninput="filterCachedTokens()"
@@ -1920,7 +2554,7 @@ def render_admin_page() -> str:
           多租户模式下，每个用户的 REFRESH_TOKEN 会被缓存以提升性能。最多缓存 100 个用户。
         </p>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                 <th class="text-left py-3 px-3">
@@ -1961,7 +2595,7 @@ def render_admin_page() -> str:
     <!-- Tab Content: Announcement -->
     <div id="tab-announcement" class="tab-content hidden">
       <div class="card">
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">📣 站点公告</h2>
           <label class="switch">
             <input type="checkbox" id="announcementToggle">
@@ -1992,6 +2626,16 @@ def render_admin_page() -> str:
             </div>
             <label class="switch">
               <input type="checkbox" id="siteToggle" onchange="toggleSite(this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="flex items-center justify-between p-4 rounded-lg mt-4" style="background: var(--bg-input);">
+            <div>
+              <div class="font-medium">自用模式</div>
+              <div class="text-sm" style="color: var(--text-muted);">禁用公开 Token 池并关闭新用户注册</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="selfUseToggle" onchange="toggleSelfUse(this.checked)">
               <span class="slider"></span>
             </label>
           </div>
@@ -2046,6 +2690,15 @@ def render_admin_page() -> str:
   <script>
     let currentTab = 'overview';
     const allTabs = ['overview','users','donated-tokens','ip-stats','blacklist','tokens','announcement','system'];
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
 
     function buildQuery(params) {{
       const qs = new URLSearchParams();
@@ -2154,21 +2807,37 @@ def render_admin_page() -> str:
       return `<span class="text-red-400">${{status || '-'}}</span>`;
     }}
 
+    function normalizeSuccessRate(rate) {{
+      const value = Number(rate);
+      if (!Number.isFinite(value)) return null;
+      return value <= 1 ? value * 100 : value;
+    }}
+
+    function formatSuccessRate(rate, digits = 1) {{
+      const percent = normalizeSuccessRate(rate);
+      if (percent === null) return '-';
+      return percent.toFixed(digits) + '%';
+    }}
+
     function setTokenVisibility(value) {{
-      document.getElementById('tokenVisibilityFilter').value = value;
+      const select = document.getElementById('tokenVisibilityFilter');
+      if (!select) return;
+      select.value = value;
       updateTokenChips();
       filterTokens();
     }}
 
     function setTokenStatus(value) {{
-      document.getElementById('tokenStatusFilter').value = value;
+      const select = document.getElementById('tokenStatusFilter');
+      if (!select) return;
+      select.value = value;
       updateTokenChips();
       filterTokens();
     }}
 
     function updateTokenChips() {{
-      const visibility = document.getElementById('tokenVisibilityFilter').value;
-      const status = document.getElementById('tokenStatusFilter').value;
+      const visibility = document.getElementById('tokenVisibilityFilter')?.value ?? '';
+      const status = document.getElementById('tokenStatusFilter')?.value ?? '';
       document.querySelectorAll('.filter-chip[data-group="visibility"]').forEach(chip => {{
         chip.classList.toggle('active', chip.dataset.value === visibility);
       }});
@@ -2213,6 +2882,8 @@ def render_admin_page() -> str:
         document.getElementById('siteIcon').textContent = siteEnabled ? '🟢' : '🔴';
         document.getElementById('siteToggleQuick').checked = siteEnabled;
         document.getElementById('siteToggle').checked = siteEnabled;
+        const selfUseToggle = document.getElementById('selfUseToggle');
+        if (selfUseToggle) selfUseToggle.checked = !!d.self_use_enabled;
         // Token status
         document.getElementById('tokenStatus').innerHTML = d.token_valid ? '<span class="text-green-400">有效</span>' : '<span class="text-yellow-400">未知</span>';
         document.getElementById('totalRequests').textContent = d.total_requests || 0;
@@ -2423,6 +3094,7 @@ def render_admin_page() -> str:
       }}
       tb.innerHTML = blacklist.map(ip => {{
         const bannedAt = ip.banned_at ?? ip.bannedAt;
+        const reason = escapeHtml(ip.reason || '-');
         return `
         <tr class="table-row">
           <td class="py-3 px-3">
@@ -2430,7 +3102,7 @@ def render_admin_page() -> str:
           </td>
           <td class="py-3 px-3 font-mono">${{ip.ip}}</td>
           <td class="py-3 px-3">${{bannedAt ? new Date(bannedAt).toLocaleString() : '-'}}</td>
-          <td class="py-3 px-3">${{ip.reason || '-'}}</td>
+          <td class="py-3 px-3">${{reason}}</td>
           <td class="py-3 px-3">
             <button onclick="unbanIp('${{ip.ip}}')" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30">解封</button>
           </td>
@@ -2566,6 +3238,13 @@ def render_admin_page() -> str:
       const fd = new FormData();
       fd.append('enabled', enabled);
       await fetch('/admin/api/toggle-site', {{ method: 'POST', body: fd }});
+      refreshStats();
+    }}
+
+    async function toggleSelfUse(enabled) {{
+      const fd = new FormData();
+      fd.append('enabled', enabled);
+      await fetch('/admin/api/toggle-self-use', {{ method: 'POST', body: fd }});
       refreshStats();
     }}
 
@@ -2760,15 +3439,21 @@ def render_admin_page() -> str:
     let usersCurrentPage = 1;
     let usersSortField = 'id';
     let usersSortAsc = false;
+    let selectedUsers = new Set();
 
     async function refreshUsers() {{
       try {{
         const pageSize = parseInt(document.getElementById('usersPageSize').value);
         const search = document.getElementById('usersSearch').value.trim();
+        const statusValue = document.getElementById('usersStatusFilter')?.value ?? '';
+        const trustLevelRaw = document.getElementById('usersTrustLevel')?.value ?? '';
+        const trustLevel = trustLevelRaw === '' ? undefined : parseInt(trustLevelRaw, 10);
         const d = await fetchJson('/admin/api/users' + buildQuery({{
           page: usersCurrentPage,
           page_size: pageSize,
           search,
+          is_banned: statusValue === '' ? undefined : statusValue,
+          trust_level: Number.isFinite(trustLevel) ? trustLevel : undefined,
           sort_field: usersSortField,
           sort_order: usersSortAsc ? 'asc' : 'desc'
         }}));
@@ -2779,8 +3464,11 @@ def render_admin_page() -> str:
           usersCurrentPage = totalPages;
           return refreshUsers();
         }}
+        selectedUsers.clear();
+        document.getElementById('selectAllUsers').checked = false;
         renderUsersTable(allUsers);
         renderUsersPagination(total, pageSize, totalPages);
+        updateBatchUserButtons();
       }} catch (e) {{ console.error(e); }}
     }}
 
@@ -2808,13 +3496,19 @@ def render_admin_page() -> str:
     function renderUsersTable(users) {{
       const tb = document.getElementById('usersTable');
       if (!users.length) {{
-        tb.innerHTML = '<tr><td colspan="8" class="py-6 text-center" style="color: var(--text-muted);">暂无数据</td></tr>';
+        tb.innerHTML = '<tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">暂无数据</td></tr>';
+        document.getElementById('selectAllUsers').checked = false;
         return;
       }}
-      tb.innerHTML = users.map(u => `
+      tb.innerHTML = users.map(u => {{
+        const username = escapeHtml(u.username || '-');
+        return `
         <tr class="table-row">
+          <td class="py-3 px-3">
+            <input type="checkbox" value="${{u.id}}" ${{selectedUsers.has(u.id) ? 'checked' : ''}} onchange="toggleUserSelection(${{u.id}}, this.checked)">
+          </td>
           <td class="py-3 px-3">${{u.id}}</td>
-          <td class="py-3 px-3 font-medium">${{u.username}}</td>
+          <td class="py-3 px-3 font-medium">${{username}}</td>
           <td class="py-3 px-3">Lv.${{u.trust_level}}</td>
           <td class="py-3 px-3">${{u.token_count}}</td>
           <td class="py-3 px-3">${{u.api_key_count}}</td>
@@ -2827,7 +3521,10 @@ def render_admin_page() -> str:
             }}
           </td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
+      const allChecked = users.length > 0 && users.every(u => selectedUsers.has(u.id));
+      document.getElementById('selectAllUsers').checked = allChecked;
     }}
 
     function renderUsersPagination(total, pageSize, totalPages) {{
@@ -2876,6 +3573,65 @@ def render_admin_page() -> str:
       refreshUsers();
     }}
 
+    function toggleSelectAllUsers(checked) {{
+      const checkboxes = document.querySelectorAll('#usersTable input[type="checkbox"]');
+      checkboxes.forEach(cb => {{
+        cb.checked = checked;
+        if (checked) selectedUsers.add(parseInt(cb.value, 10));
+        else selectedUsers.delete(parseInt(cb.value, 10));
+      }});
+      updateBatchUserButtons();
+    }}
+
+    function toggleUserSelection(userId, checked) {{
+      if (checked) selectedUsers.add(userId);
+      else selectedUsers.delete(userId);
+      updateBatchUserButtons();
+      const allCheckboxes = document.querySelectorAll('#usersTable input[type="checkbox"]');
+      const allChecked = allCheckboxes.length > 0 && Array.from(allCheckboxes).every(cb => cb.checked);
+      document.getElementById('selectAllUsers').checked = allChecked;
+    }}
+
+    function updateBatchUserButtons() {{
+      const banBtn = document.getElementById('batchBanUsersBtn');
+      const unbanBtn = document.getElementById('batchUnbanUsersBtn');
+      const hasSelection = selectedUsers.size > 0;
+      if (banBtn) banBtn.disabled = !hasSelection;
+      if (unbanBtn) unbanBtn.disabled = !hasSelection;
+    }}
+
+    async function batchBanUsers() {{
+      if (selectedUsers.size === 0) {{
+        alert('请先选择要封禁的用户');
+        return;
+      }}
+      if (!confirm(`确定要封禁选中的 ${{selectedUsers.size}} 个用户吗？`)) return;
+      const promises = Array.from(selectedUsers).map(userId => {{
+        const fd = new FormData();
+        fd.append('user_id', userId);
+        return fetch('/admin/api/users/ban', {{ method: 'POST', body: fd }});
+      }});
+      await Promise.all(promises);
+      selectedUsers.clear();
+      refreshUsers();
+    }}
+
+    async function batchUnbanUsers() {{
+      if (selectedUsers.size === 0) {{
+        alert('请先选择要解封的用户');
+        return;
+      }}
+      if (!confirm(`确定要解封选中的 ${{selectedUsers.size}} 个用户吗？`)) return;
+      const promises = Array.from(selectedUsers).map(userId => {{
+        const fd = new FormData();
+        fd.append('user_id', userId);
+        return fetch('/admin/api/users/unban', {{ method: 'POST', body: fd }});
+      }});
+      await Promise.all(promises);
+      selectedUsers.clear();
+      refreshUsers();
+    }}
+
     // 添加 Token 池数据和状态
     let allPoolTokens = [];
     let poolCurrentPage = 1;
@@ -2889,11 +3645,13 @@ def render_admin_page() -> str:
         const pageSize = parseInt(document.getElementById('poolPageSize').value);
         const search = document.getElementById('poolSearch').value.trim();
         const visibility = document.getElementById('poolVisibilityFilter').value;
+        const status = document.getElementById('poolStatusFilter').value;
         const d = await fetchJson('/admin/api/donated-tokens' + buildQuery({{
           page: poolCurrentPage,
           page_size: pageSize,
           search,
           visibility,
+          status,
           sort_field: poolSortField,
           sort_order: poolSortAsc ? 'asc' : 'desc'
         }}));
@@ -2901,7 +3659,8 @@ def render_admin_page() -> str:
         document.getElementById('poolTotalTokens').textContent = d.total || 0;
         document.getElementById('poolActiveTokens').textContent = d.active || 0;
         document.getElementById('poolPublicTokens').textContent = d.public || 0;
-        document.getElementById('poolAvgSuccessRate').textContent = d.avg_success_rate ? d.avg_success_rate.toFixed(1) + '%' : '-';
+        document.getElementById('poolAvgSuccessRate').textContent =
+          d.avg_success_rate === undefined || d.avg_success_rate === null ? '-' : formatSuccessRate(d.avg_success_rate, 1);
         allPoolTokens = (d.tokens || []).map(t => ({{
           ...t,
           success_rate: t.success_rate || 0,
@@ -2921,6 +3680,24 @@ def render_admin_page() -> str:
     }}
 
     function filterPoolTokens() {{
+      poolCurrentPage = 1;
+      refreshDonatedTokens();
+    }}
+
+    function applyPoolQuickFilter(type) {{
+      const visibilityEl = document.getElementById('poolVisibilityFilter');
+      const statusEl = document.getElementById('poolStatusFilter');
+      if (!visibilityEl || !statusEl) return;
+      if (type === 'active') {{
+        visibilityEl.value = '';
+        statusEl.value = 'active';
+      }} else if (type === 'public') {{
+        visibilityEl.value = 'public';
+        statusEl.value = '';
+      }} else {{
+        visibilityEl.value = '';
+        statusEl.value = '';
+      }}
       poolCurrentPage = 1;
       refreshDonatedTokens();
     }}
@@ -2973,16 +3750,18 @@ def render_admin_page() -> str:
         tb.innerHTML = '<tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">暂无添加 Token</td></tr>';
         return;
       }}
-      tb.innerHTML = tokens.map(t => `
+      tb.innerHTML = tokens.map(t => {{
+        const username = escapeHtml(t.username || '未知');
+        return `
         <tr class="table-row">
           <td class="py-3 px-3">
             <input type="checkbox" value="${{t.id}}" ${{selectedPoolTokens.has(t.id) ? 'checked' : ''}} onchange="togglePoolSelection(${{t.id}}, this.checked)">
           </td>
           <td class="py-3 px-3">#${{t.id}}</td>
-          <td class="py-3 px-3">${{t.username || '未知'}}</td>
+          <td class="py-3 px-3">${{username}}</td>
           <td class="py-3 px-3">${{t.visibility === 'public' ? '<span class="text-green-400">公开</span>' : '<span class="text-blue-400">私有</span>'}}</td>
           <td class="py-3 px-3">${{renderTokenStatus(t.status)}}</td>
-          <td class="py-3 px-3">${{(t.success_rate * 100).toFixed(1)}}%</td>
+          <td class="py-3 px-3">${{formatSuccessRate(t.success_rate, 1)}}</td>
           <td class="py-3 px-3">${{t.use_count}}</td>
           <td class="py-3 px-3">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3">
@@ -2990,7 +3769,8 @@ def render_admin_page() -> str:
             <button onclick="deleteDonatedToken(${{t.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">删除</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
     }}
 
     function renderPoolPagination(total, pageSize, totalPages) {{
@@ -3066,12 +3846,23 @@ def render_admin_page() -> str:
 
 def render_user_page(user) -> str:
     """Render the user dashboard page."""
-    display_name = user.username or "用户"
+    from kiro_gateway.metrics import metrics
+
+    self_use_enabled = metrics.is_self_use_enabled()
+    body_self_use_attr = "true" if self_use_enabled else "false"
+
+    display_name_raw = user.username or "用户"
+    display_name = html.escape(display_name_raw)
+    avatar_initial = html.escape(display_name_raw[0].upper() if display_name_raw else "👤")
+    avatar_url = (user.avatar_url or "").strip()
+    avatar_url_safe = ""
+    if avatar_url.startswith(("http://", "https://")):
+        avatar_url_safe = html.escape(avatar_url, quote=True)
     # Determine avatar display
-    if user.avatar_url:
-        avatar_html = f'<img src="{user.avatar_url}" class="w-16 h-16 rounded-full object-cover" alt="{display_name}">'
+    if avatar_url_safe:
+        avatar_html = f'<img src="{avatar_url_safe}" class="w-16 h-16 rounded-full object-cover" alt="{display_name}">'
     else:
-        avatar_html = f'<div class="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center text-2xl">{display_name[0].upper() if display_name else "👤"}</div>'
+        avatar_html = f'<div class="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center text-2xl">{avatar_initial}</div>'
 
     # Determine user info display based on login provider
     if user.github_id:
@@ -3085,10 +3876,10 @@ def render_user_page(user) -> str:
     return f'''<!DOCTYPE html>
 <html lang="zh">
 <head>{COMMON_HEAD}</head>
-<body>
+<body data-self-use="{body_self_use_attr}">
   {COMMON_NAV}
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <div class="card mb-6">
+    <div class="card mb-6 user-hero">
       <div class="flex flex-col sm:flex-row sm:items-center gap-4">
         {avatar_html}
         <div class="flex-1">
@@ -3113,7 +3904,7 @@ def render_user_page(user) -> str:
         <div class="text-3xl font-bold text-indigo-400" id="tokenCount">-</div>
         <div class="text-sm" style="color: var(--text-muted);">我的 Token</div>
       </div>
-      <div class="card text-center">
+      <div class="card text-center public-only">
         <div class="text-3xl font-bold text-green-400" id="publicTokenCount">-</div>
         <div class="text-sm" style="color: var(--text-muted);">公开 Token</div>
       </div>
@@ -3140,6 +3931,15 @@ def render_user_page(user) -> str:
         </div>
       </div>
     </div>
+    <div class="card mb-6 self-use-only">
+      <div class="flex items-start gap-3">
+        <div class="text-2xl">🔒</div>
+        <div>
+          <h2 class="font-bold">已启用自用模式</h2>
+          <p class="text-sm mt-1" style="color: var(--text-muted);">公开 Token 池与公开贡献已禁用，新用户注册已关闭。</p>
+        </div>
+      </div>
+    </div>
     <div class="flex gap-2 mb-4 border-b" style="border-color: var(--border);">
       <button class="tab px-4 py-2 font-medium" onclick="showTab('tokens')" id="tab-tokens">🔑 Token 管理</button>
       <button class="tab px-4 py-2 font-medium" onclick="showTab('keys')" id="tab-keys">🗝️ API Keys</button>
@@ -3147,7 +3947,7 @@ def render_user_page(user) -> str:
     <div id="panel-tokens" class="tab-panel">
       <div class="card">
         <!-- 可折叠的获取 Token 说明 -->
-        <details class="mb-6 rounded-lg" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1)); border: 1px solid var(--primary);">
+        <details class="mb-6 rounded-lg" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(34, 211, 238, 0.08)); border: 1px solid var(--primary);">
           <summary class="p-4 cursor-pointer font-bold flex items-center gap-2 select-none">
             <span>💡</span> 如何获取 Refresh Token
             <svg class="w-4 h-4 ml-auto transition-transform details-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -3167,18 +3967,18 @@ def render_user_page(user) -> str:
         <!-- 子标签切换：我的 Token / 公开 Token -->
         <div class="flex gap-1 mb-4 p-1 rounded-lg" style="background: var(--bg-input);">
           <button onclick="showTokenSubTab('mine')" id="subtab-mine" class="subtab flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all">🔐 我的 Token</button>
-          <button onclick="showTokenSubTab('public')" id="subtab-public" class="subtab flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all">🌐 公开 Token 池</button>
+          <button onclick="showTokenSubTab('public')" id="subtab-public" class="subtab flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all public-only">🌐 公开 Token 池</button>
         </div>
 
         <!-- 我的 Token 面板 -->
         <div id="subtab-panel-mine">
-          <div class="flex flex-wrap items-center gap-3 mb-2">
+          <div class="flex flex-wrap items-center gap-3 mb-3 toolbar">
             <h2 class="text-lg font-bold">我的 Token</h2>
             <div class="flex-1 flex items-center gap-2 flex-wrap">
               <input type="text" id="tokensSearch" placeholder="搜索 ID 或状态..." oninput="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); min-width: 160px;">
               <select id="tokenVisibilityFilter" onchange="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);">
                 <option value="">全部可见性</option>
-                <option value="public">公开</option>
+                <option value="public" class="public-only">公开</option>
                 <option value="private">私有</option>
               </select>
               <select id="tokenStatusFilter" onchange="filterTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);">
@@ -3193,14 +3993,14 @@ def render_user_page(user) -> str:
                 <option value="50">50 条/页</option>
               </select>
               <button onclick="refreshTokens()" class="btn btn-primary text-sm px-3 py-1.5 rounded-lg" style="background: var(--primary); color: white;">刷新</button>
-              <button onclick="batchDeleteTokens()" id="batchDeleteBtn" class="btn btn-danger text-sm px-3 py-1.5 rounded-lg" style="background: #ef4444; color: white; display: none;">批量删除</button>
+              <button onclick="batchDeleteTokens()" id="batchDeleteTokensBtn" class="btn btn-danger text-sm px-3 py-1.5 rounded-lg" style="background: #ef4444; color: white; display: none;">批量删除</button>
             </div>
             <button onclick="showDonateModal()" class="btn-primary">+ 添加 Token</button>
           </div>
           <div class="flex flex-wrap items-center gap-2 mb-4 text-xs">
             <span style="color: var(--text-muted);">可见性</span>
             <button type="button" class="filter-chip" data-group="visibility" data-value="" onclick="setTokenVisibility('')">全部</button>
-            <button type="button" class="filter-chip" data-group="visibility" data-value="public" onclick="setTokenVisibility('public')">公开</button>
+            <button type="button" class="filter-chip public-only" data-group="visibility" data-value="public" onclick="setTokenVisibility('public')">公开</button>
             <button type="button" class="filter-chip" data-group="visibility" data-value="private" onclick="setTokenVisibility('private')">私有</button>
             <span class="ml-2" style="color: var(--text-muted);">状态</span>
             <button type="button" class="filter-chip" data-group="status" data-value="" onclick="setTokenStatus('')">全部</button>
@@ -3209,7 +4009,7 @@ def render_user_page(user) -> str:
             <button type="button" class="filter-chip" data-group="status" data-value="expired" onclick="setTokenStatus('expired')">已过期</button>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm data-table">
               <thead>
                 <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                   <th class="text-left py-3 px-3" style="width: 40px;">
@@ -3235,8 +4035,8 @@ def render_user_page(user) -> str:
         </div>
 
         <!-- 公开 Token 池面板 -->
-        <div id="subtab-panel-public" style="display: none;">
-          <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div id="subtab-panel-public" class="public-only" style="display: none;">
+          <div class="flex flex-wrap items-center gap-3 mb-4 toolbar">
             <h2 class="text-lg font-bold">公开 Token 池</h2>
             <div class="flex-1 flex items-center gap-2 flex-wrap">
               <input type="text" id="publicTokenSearch" placeholder="搜索贡献者..." oninput="filterPublicTokens()" class="px-3 py-1.5 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); min-width: 140px;">
@@ -3253,7 +4053,7 @@ def render_user_page(user) -> str:
             </div>
           </div>
           <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm data-table">
               <thead>
                 <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                   <th class="text-left py-3 px-3">#</th>
@@ -3273,7 +4073,7 @@ def render_user_page(user) -> str:
             <span id="publicTokenInfo" class="text-sm" style="color: var(--text-muted);"></span>
             <div id="publicTokenPages" class="flex gap-1"></div>
           </div>
-          <p class="mt-4 text-sm" style="color: var(--text-muted);">
+          <p class="mt-4 text-sm public-only" style="color: var(--text-muted);">
             💡 公开 Token 池由社区成员自愿贡献，供所有用户共享使用。您也可以切换到"我的 Token"添加您的 Token。
           </p>
         </div>
@@ -3281,7 +4081,7 @@ def render_user_page(user) -> str:
     </div>
     <div id="panel-keys" class="tab-panel" style="display: none;">
       <div class="card">
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-2">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-3 toolbar">
           <h2 class="text-lg font-bold">我的 API Keys</h2>
           <div class="flex items-center gap-2">
             <input type="text" id="keysSearch" placeholder="搜索 Key 或名称..." oninput="filterKeys()"
@@ -3307,7 +4107,7 @@ def render_user_page(user) -> str:
           <button type="button" class="filter-chip" data-group="keys-active" data-value="false" onclick="setKeysActive('false')">停用</button>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm data-table">
             <thead>
               <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
                 <th class="text-left py-3 px-3">
@@ -3326,7 +4126,7 @@ def render_user_page(user) -> str:
         </div>
         <div class="flex items-center justify-between mt-4 pt-4" style="border-top: 1px solid var(--border);">
           <div class="flex items-center gap-2">
-            <button onclick="batchDeleteKeys()" class="text-xs px-3 py-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30" id="batchDeleteBtn" style="display: none;">批量删除</button>
+            <button onclick="batchDeleteKeys()" class="text-xs px-3 py-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30" id="batchDeleteKeysBtn" style="display: none;">批量删除</button>
             <span id="selectedKeysCount" class="text-sm" style="color: var(--text-muted); display: none;"></span>
           </div>
           <div id="keysPagination" style="display: none;">
@@ -3348,11 +4148,11 @@ def render_user_page(user) -> str:
       <!-- 模式选择 -->
       <div class="flex gap-1 mb-4 p-1 rounded-lg" style="background: var(--bg-input);">
         <button onclick="setDonateMode('private')" id="donateMode-private" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all active">🔐 个人使用</button>
-        <button onclick="setDonateMode('public')" id="donateMode-public" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all">🌐 公开添加</button>
+        <button onclick="setDonateMode('public')" id="donateMode-public" class="donate-mode-btn flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all public-only">🌐 公开添加</button>
       </div>
 
       <!-- 模式说明 -->
-      <div id="donateDesc-private" class="mb-4 p-3 rounded-lg text-sm" style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3);">
+      <div id="donateDesc-private" class="mb-4 p-3 rounded-lg text-sm" style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3);">
         <p class="font-medium text-indigo-400 mb-1">💡 个人使用模式</p>
         <ul class="space-y-1" style="color: var(--text-muted);">
           <li>• Token 仅供您自己使用</li>
@@ -3360,7 +4160,7 @@ def render_user_page(user) -> str:
           <li>• 适合保护个人配额不被他人消耗</li>
         </ul>
       </div>
-      <div id="donateDesc-public" class="mb-4 p-3 rounded-lg text-sm" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: none;">
+      <div id="donateDesc-public" class="mb-4 p-3 rounded-lg text-sm public-only" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); display: none;">
         <p class="font-medium text-green-400 mb-1">🌍 公开添加模式</p>
         <ul class="space-y-1" style="color: var(--text-muted);">
           <li>• Token 加入公共池供所有用户共享</li>
@@ -3372,7 +4172,7 @@ def render_user_page(user) -> str:
       <textarea id="donateToken" class="w-full h-28 p-3 rounded-lg" style="background: var(--bg-input); border: 1px solid var(--border);" placeholder="粘贴你的 Refresh Token..."></textarea>
 
       <!-- 匿名选项（仅公开模式显示） -->
-      <div id="anonymousOption" class="mt-3 p-3 rounded-lg" style="background: var(--bg-input); display: none;">
+      <div id="anonymousOption" class="mt-3 p-3 rounded-lg public-only" style="background: var(--bg-input); display: none;">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="donateAnonymous" class="w-4 h-4 rounded">
           <div>
@@ -3432,16 +4232,78 @@ def render_user_page(user) -> str:
   </div>
   {COMMON_FOOTER}
   <style>
-    .tab {{ color: var(--text-muted); border-bottom: 2px solid transparent; }}
-    .tab.active {{ color: var(--primary); border-bottom-color: var(--primary); }}
-    .table-row:hover {{ background: var(--bg-input); }}
+    .user-hero {{
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(34, 211, 238, 0.08));
+      position: relative;
+      overflow: hidden;
+    }}
+    .user-hero::after {{
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 85% 10%, rgba(163, 230, 53, 0.18), transparent 45%);
+      opacity: 0.6;
+      pointer-events: none;
+    }}
+    .kpi-grid .card {{
+      position: relative;
+      overflow: hidden;
+    }}
+    .kpi-grid .card::after {{
+      content: '';
+      position: absolute;
+      top: -40%;
+      right: -30%;
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.25), transparent 60%);
+      opacity: 0.6;
+      pointer-events: none;
+    }}
+    .tab {{
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.85rem;
+    }}
+    .tab.active {{
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      text-shadow: 0 0 14px rgba(56, 189, 248, 0.45);
+    }}
+    .table-row:hover {{ background: var(--bg-hover); }}
     .subtab {{ color: var(--text-muted); }}
-    .subtab.active {{ background: var(--primary); color: white; }}
+    .subtab.active {{
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+      box-shadow: 0 12px 24px rgba(56, 189, 248, 0.25);
+    }}
     .donate-mode-btn {{ color: var(--text-muted); }}
-    .donate-mode-btn.active {{ background: var(--primary); color: white; }}
-    .filter-chip {{ border: 1px solid var(--border); border-radius: 999px; padding: 0.2rem 0.6rem; background: var(--bg-input); color: var(--text-muted); transition: all 0.2s; }}
-    .filter-chip:hover {{ color: var(--text); }}
-    .filter-chip.active {{ background: var(--primary); color: white; border-color: var(--primary); }}
+    .donate-mode-btn.active {{
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+    }}
+    .filter-chip {{
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      background: rgba(15, 23, 42, 0.04);
+      color: var(--text-muted);
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+    }}
+    [data-theme="dark"] .filter-chip {{
+      background: rgba(15, 23, 42, 0.4);
+    }}
+    .filter-chip:hover {{ color: var(--text); border-color: var(--border-dark); }}
+    .filter-chip.active {{
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 10px 22px rgba(56, 189, 248, 0.25);
+    }}
     details[open] .details-arrow {{ transform: rotate(180deg); }}
   </style>
   <script>
@@ -3449,6 +4311,7 @@ def render_user_page(user) -> str:
     let confirmCallback = null;
     let keyNameCallback = null;
     let userHasTokens = false;
+    const SELF_USE_MODE = {str(self_use_enabled).lower()};
 
     // Token 表格状态
     let allTokens = [];
@@ -3483,6 +4346,68 @@ def render_user_page(user) -> str:
       return `<span class="text-red-400">${{status || '-'}}</span>`;
     }}
 
+    function normalizeSuccessRate(rate) {{
+      const value = Number(rate);
+      if (!Number.isFinite(value)) return null;
+      return value <= 1 ? value * 100 : value;
+    }}
+
+    function formatSuccessRate(rate, digits = 1) {{
+      const percent = normalizeSuccessRate(rate);
+      if (percent === null) return '-';
+      return percent.toFixed(digits) + '%';
+    }}
+
+    function applySelfUseMode() {{
+      if (!SELF_USE_MODE) return;
+      const publicOption = document.querySelector('#tokenVisibilityFilter option[value="public"]');
+      if (publicOption) publicOption.remove();
+      const visibilityFilter = document.getElementById('tokenVisibilityFilter');
+      if (visibilityFilter && visibilityFilter.value === 'public') visibilityFilter.value = '';
+    }}
+
+    function setTokenVisibility(value) {{
+      const select = document.getElementById('tokenVisibilityFilter');
+      if (!select) return;
+      select.value = value;
+      updateTokenChips();
+      filterTokens();
+    }}
+
+    function setTokenStatus(value) {{
+      const select = document.getElementById('tokenStatusFilter');
+      if (!select) return;
+      select.value = value;
+      updateTokenChips();
+      filterTokens();
+    }}
+
+    function updateTokenChips() {{
+      const visibility = document.getElementById('tokenVisibilityFilter')?.value ?? '';
+      const status = document.getElementById('tokenStatusFilter')?.value ?? '';
+      document.querySelectorAll('.filter-chip[data-group="visibility"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === visibility);
+      }});
+      document.querySelectorAll('.filter-chip[data-group="status"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === status);
+      }});
+    }}
+
+    function setKeysActive(value) {{
+      const select = document.getElementById('keysActiveFilter');
+      if (!select) return;
+      select.value = value;
+      updateKeysChips();
+      filterKeys();
+    }}
+
+    function updateKeysChips() {{
+      const activeValue = document.getElementById('keysActiveFilter')?.value ?? '';
+      document.querySelectorAll('.filter-chip[data-group="keys-active"]').forEach(chip => {{
+        chip.classList.toggle('active', chip.dataset.value === activeValue);
+      }});
+    }}
+
     function setGreeting() {{
       const el = document.getElementById('greetingText');
       if (!el) return;
@@ -3515,11 +4440,13 @@ def render_user_page(user) -> str:
       }}
 
       if (tokenCount === 0) {{
-        guideTitle.textContent = '补充 Token 获取更稳定体验';
-        guideText.textContent = '当前 API Key 将使用公开 Token 池，建议添加自己的 Token。';
+        guideTitle.textContent = SELF_USE_MODE ? '自用模式需先添加 Token' : '补充 Token 获取更稳定体验';
+        guideText.textContent = SELF_USE_MODE
+          ? '自用模式下必须添加私有 Token 才能生成 API Key。'
+          : '当前 API Key 将使用公开 Token 池，建议添加自己的 Token。';
         guideActions.innerHTML = `
           <button type="button" onclick="showTab('tokens'); showTokenSubTab('mine'); showDonateModal();" class="btn-primary text-sm px-3 py-1.5">添加 Token</button>
-          <button type="button" onclick="showTab('tokens'); showTokenSubTab('public');" class="text-sm px-3 py-1.5 rounded-lg" style="background: var(--bg-input); border: 1px solid var(--border);">查看公开 Token 池</button>
+          ${{SELF_USE_MODE ? '' : '<button type="button" onclick="showTab(\\'tokens\\'); showTokenSubTab(\\'public\\');" class="text-sm px-3 py-1.5 rounded-lg public-only" style="background: var(--bg-input); border: 1px solid var(--border);">查看公开 Token 池</button>'}}
         `;
         return;
       }}
@@ -3673,22 +4600,30 @@ def render_user_page(user) -> str:
         document.getElementById('selectAllTokens').checked = false;
         return;
       }}
-      tb.innerHTML = tokens.map(t => `
-        <tr class="table-row">
-          <td class="py-3 px-3">
-            <input type="checkbox" class="token-checkbox" data-token-id="${{t.id}}" onchange="toggleTokenSelection(${{t.id}}, this.checked)" ${{selectedTokenIds.has(t.id) ? 'checked' : ''}} style="cursor: pointer;">
-          </td>
-          <td class="py-3 px-3">#${{t.id}}</td>
-          <td class="py-3 px-3"><span class="${{t.visibility === 'public' ? 'text-green-400' : 'text-blue-400'}}">${{t.visibility === 'public' ? '公开' : '私有'}}</span></td>
-          <td class="py-3 px-3">${{renderTokenStatus(t.status)}}</td>
-          <td class="py-3 px-3">${{t.success_rate}}%</td>
-          <td class="py-3 px-3">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
-          <td class="py-3 px-3">
-            <button onclick="toggleVisibility(${{t.id}}, '${{t.visibility === 'public' ? 'private' : 'public'}}')" class="text-xs px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 mr-1">切换</button>
-            <button onclick="deleteToken(${{t.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">删除</button>
-          </td>
-        </tr>
-      `).join('');
+      tb.innerHTML = tokens.map(t => {{
+        const canToggle = !SELF_USE_MODE || t.visibility === 'public';
+        const toggleTarget = t.visibility === 'public' ? 'private' : 'public';
+        const toggleLabel = SELF_USE_MODE ? '设为私有' : '切换';
+        const toggleBtn = canToggle
+          ? `<button onclick="toggleVisibility(${{t.id}}, '${{toggleTarget}}')" class="text-xs px-2 py-1 rounded bg-indigo-500/20 text-indigo-400 mr-1">${{toggleLabel}}</button>`
+          : '';
+        return `
+          <tr class="table-row">
+            <td class="py-3 px-3">
+              <input type="checkbox" class="token-checkbox" data-token-id="${{t.id}}" onchange="toggleTokenSelection(${{t.id}}, this.checked)" ${{selectedTokenIds.has(t.id) ? 'checked' : ''}} style="cursor: pointer;">
+            </td>
+            <td class="py-3 px-3">#${{t.id}}</td>
+            <td class="py-3 px-3"><span class="${{t.visibility === 'public' ? 'text-green-400' : 'text-blue-400'}}">${{t.visibility === 'public' ? '公开' : '私有'}}</span></td>
+            <td class="py-3 px-3">${{renderTokenStatus(t.status)}}</td>
+            <td class="py-3 px-3">${{formatSuccessRate(t.success_rate)}}</td>
+            <td class="py-3 px-3">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
+            <td class="py-3 px-3">
+              ${{toggleBtn}}
+              <button onclick="deleteToken(${{t.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">删除</button>
+            </td>
+          </tr>
+        `;
+      }}).join('');
 
       const allChecked = tokens.length > 0 && tokens.every(t => selectedTokenIds.has(t.id));
       document.getElementById('selectAllTokens').checked = allChecked;
@@ -3751,7 +4686,7 @@ def render_user_page(user) -> str:
     }}
 
     function updateBatchDeleteTokenBtn() {{
-      const btn = document.getElementById('batchDeleteBtn');
+      const btn = document.getElementById('batchDeleteTokensBtn');
       if (selectedTokenIds.size > 0) {{
         btn.style.display = 'inline-block';
         btn.textContent = `批量删除 (${{selectedTokenIds.size}})`;
@@ -3849,21 +4784,26 @@ def render_user_page(user) -> str:
         document.getElementById('keysPagination').style.display = 'none';
         return;
       }}
-      tb.innerHTML = keys.map(k => `
+      tb.innerHTML = keys.map(k => {{
+        const keyPrefix = escapeHtml(k.key_prefix || '');
+        const name = escapeHtml(k.name || '-');
+        const nameTitle = escapeHtml(k.name || '');
+        return `
         <tr class="table-row">
           <td class="py-3 px-3">
             <input type="checkbox" class="key-checkbox" data-key-id="${{k.id}}" onchange="toggleKeySelection(${{k.id}}, this.checked)" ${{selectedKeys.has(k.id) ? 'checked' : ''}} style="cursor: pointer;">
           </td>
-          <td class="py-3 px-3 font-mono">${{k.key_prefix}}</td>
+          <td class="py-3 px-3 font-mono">${{keyPrefix}}</td>
           <td class="py-3 px-3">
-            <span title="${{k.name || ''}}" style="display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">${{k.name || '-'}}</span>
+            <span title="${{nameTitle}}" style="display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;">${{name}}</span>
           </td>
           <td class="py-3 px-3">${{k.request_count}}</td>
           <td class="py-3 px-3">${{k.last_used ? new Date(k.last_used).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3">${{k.created_at ? new Date(k.created_at).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3"><button onclick="deleteKey(${{k.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">删除</button></td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
     }}
 
     function renderKeysPagination(total, pageSize, totalPages) {{
@@ -3938,7 +4878,7 @@ def render_user_page(user) -> str:
 
     function updateBatchDeleteUI() {{
       const count = selectedKeys.size;
-      const btn = document.getElementById('batchDeleteBtn');
+      const btn = document.getElementById('batchDeleteKeysBtn');
       const countSpan = document.getElementById('selectedKeysCount');
       if (count > 0) {{
         btn.style.display = 'inline-block';
@@ -3970,7 +4910,10 @@ def render_user_page(user) -> str:
       loadProfile();
     }}
 
-    function showDonateModal() {{ document.getElementById('donateModal').style.display = 'flex'; }}
+    function showDonateModal() {{
+      document.getElementById('donateModal').style.display = 'flex';
+      if (SELF_USE_MODE) setDonateMode('private');
+    }}
     function hideDonateModal() {{
       document.getElementById('donateModal').style.display = 'none';
       setDonateMode('private');
@@ -3979,6 +4922,7 @@ def render_user_page(user) -> str:
     }}
 
     function setDonateMode(mode) {{
+      if (SELF_USE_MODE && mode === 'public') mode = 'private';
       const privateBtn = document.getElementById('donateMode-private');
       const publicBtn = document.getElementById('donateMode-public');
       const privateDesc = document.getElementById('donateDesc-private');
@@ -3987,15 +4931,15 @@ def render_user_page(user) -> str:
 
       if (mode === 'private') {{
         privateBtn.classList.add('active');
-        publicBtn.classList.remove('active');
+        if (publicBtn) publicBtn.classList.remove('active');
         privateDesc.style.display = 'block';
-        publicDesc.style.display = 'none';
+        if (publicDesc) publicDesc.style.display = 'none';
         anonOption.style.display = 'none';
       }} else {{
         privateBtn.classList.remove('active');
-        publicBtn.classList.add('active');
+        if (publicBtn) publicBtn.classList.add('active');
         privateDesc.style.display = 'none';
-        publicDesc.style.display = 'block';
+        if (publicDesc) publicDesc.style.display = 'block';
         anonOption.style.display = 'block';
       }}
       document.getElementById('donateVisibility').value = mode;
@@ -4005,7 +4949,7 @@ def render_user_page(user) -> str:
       document.getElementById('generatedKey').textContent = key;
       document.getElementById('copyStatus').style.display = 'none';
       const infoEl = document.getElementById('tokenSourceInfo');
-      if (usePublicPool) {{
+      if (usePublicPool && !SELF_USE_MODE) {{
         infoEl.innerHTML = '💡 <strong>提示：</strong>您尚未添加 Token，此 Key 将使用公开 Token 池。添加自己的 Token 可获得更稳定的服务。';
         infoEl.style.display = 'block';
         infoEl.style.background = 'rgba(245, 158, 11, 0.15)';
@@ -4041,6 +4985,9 @@ def render_user_page(user) -> str:
       if (!token) return showConfirmModal({{ title: '提示', message: '请输入 Token', icon: '💡', confirmText: '好的', danger: false }});
       const hadTokens = userHasTokens;
       const visibility = document.getElementById('donateVisibility').value;
+      if (SELF_USE_MODE && visibility === 'public') {{
+        return showConfirmModal({{ title: '提示', message: '自用模式下禁止公开 Token，请选择个人使用。', icon: '🔒', confirmText: '好的', danger: false }});
+      }}
       const anonymous = document.getElementById('donateAnonymous').checked;
       const fd = new FormData();
       fd.append('refresh_token', token);
@@ -4071,7 +5018,7 @@ def render_user_page(user) -> str:
           loadTokens();
           loadProfile();
         }} else {{
-          showConfirmModal({{ title: '失败', message: d.message || '添加失败', icon: '❌', confirmText: '好的', danger: false }});
+          showConfirmModal({{ title: '失败', message: d.error || d.message || '添加失败', icon: '❌', confirmText: '好的', danger: false }});
         }}
       }} catch (e) {{
         showConfirmModal({{ title: '错误', message: '请求失败，请稍后重试', icon: '❌', confirmText: '好的', danger: false }});
@@ -4079,6 +5026,16 @@ def render_user_page(user) -> str:
     }}
 
     async function toggleVisibility(tokenId, newVisibility) {{
+      if (SELF_USE_MODE && newVisibility === 'public') {{
+        await showConfirmModal({{
+          title: '自用模式',
+          message: '自用模式下禁止将 Token 设为公开。',
+          icon: '🔒',
+          confirmText: '好的',
+          danger: false
+        }});
+        return;
+      }}
       const confirmed = await showConfirmModal({{
         title: '切换可见性',
         message: `确定将此 Token 切换为${{newVisibility === 'public' ? '公开' : '私有'}}吗？${{newVisibility === 'public' ? '\\n公开后将加入公共池供所有用户使用。' : ''}}`,
@@ -4123,6 +5080,16 @@ def render_user_page(user) -> str:
 
       // 如果用户没有 Token，先提示
       if (!userHasTokens) {{
+        if (SELF_USE_MODE) {{
+          await showConfirmModal({{
+            title: '提示',
+            message: '自用模式下必须先添加私有 Token 才能生成 API Key。',
+            icon: '🔒',
+            confirmText: '好的',
+            danger: false
+          }});
+          return;
+        }}
         const proceed = await showConfirmModal({{
           title: '提示',
           message: '您尚未添加任何 Token。生成的 API Key 将使用公开 Token 池，可能会有配额限制。\\n\\n建议先添加您的 Token 以获得更好的体验。\\n\\n是否继续生成？',
@@ -4147,7 +5114,7 @@ def render_user_page(user) -> str:
           loadKeys();
           loadProfile();
         }} else {{
-          showConfirmModal({{ title: '失败', message: d.message || '生成失败', icon: '❌', confirmText: '好的', danger: false }});
+          showConfirmModal({{ title: '失败', message: d.error || d.message || '生成失败', icon: '❌', confirmText: '好的', danger: false }});
         }}
       }} catch (e) {{
         showConfirmModal({{ title: '错误', message: '请求失败，请稍后重试', icon: '❌', confirmText: '好的', danger: false }});
@@ -4182,10 +5149,11 @@ def render_user_page(user) -> str:
 
       if (tab === 'mine') {{
         mineBtn.classList.add('active');
-        publicBtn.classList.remove('active');
+        if (publicBtn) publicBtn.classList.remove('active');
         minePanel.style.display = 'block';
-        publicPanel.style.display = 'none';
+        if (publicPanel) publicPanel.style.display = 'none';
       }} else {{
+        if (SELF_USE_MODE || !publicBtn || !publicPanel) return;
         mineBtn.classList.remove('active');
         publicBtn.classList.add('active');
         minePanel.style.display = 'none';
@@ -4196,7 +5164,15 @@ def render_user_page(user) -> str:
 
     async function loadPublicTokens() {{
       try {{
+        if (SELF_USE_MODE) return;
         const r = await fetch('/api/public-tokens');
+        if (!r.ok) {{
+          const tb = document.getElementById('publicTokenTable');
+          if (tb) {{
+            tb.innerHTML = '<tr><td colspan="6" class="py-6 text-center" style="color: var(--text-muted);">自用模式下不开放公开 Token 池</td></tr>';
+          }}
+          return;
+        }}
         const d = await r.json();
         allPublicTokens = (d.tokens || []).map(t => ({{
           ...t,
@@ -4204,8 +5180,8 @@ def render_user_page(user) -> str:
         }}));
         document.getElementById('publicPoolCount').textContent = d.count || 0;
         if (allPublicTokens.length > 0) {{
-          const avgRate = allPublicTokens.reduce((sum, t) => sum + (t.success_rate || 0), 0) / allPublicTokens.length;
-          document.getElementById('publicPoolAvgRate').textContent = avgRate.toFixed(1) + '%';
+          const avgRate = allPublicTokens.reduce((sum, t) => sum + (normalizeSuccessRate(t.success_rate) ?? 0), 0) / allPublicTokens.length;
+          document.getElementById('publicPoolAvgRate').textContent = formatSuccessRate(avgRate, 1);
         }} else {{
           document.getElementById('publicPoolAvgRate').textContent = '-';
         }}
@@ -4263,16 +5239,21 @@ def render_user_page(user) -> str:
         tb.innerHTML = `<tr><td colspan="6" class="py-8 text-center" style="color: var(--text-muted);"><div class="mb-3">暂无公开 Token，欢迎一起贡献</div><button type="button" onclick="showTokenSubTab('mine'); showDonateModal();" class="text-sm px-3 py-1.5 rounded-lg" style="background: var(--bg-input); border: 1px solid var(--border);">去添加 Token</button></td></tr>`;
         return;
       }}
-      tb.innerHTML = tokens.map((t, i) => `
+      tb.innerHTML = tokens.map((t, i) => {{
+        const username = escapeHtml(t.username || '匿名');
+        const rate = normalizeSuccessRate(t.success_rate) ?? 0;
+        const rateClass = rate >= 80 ? 'text-green-400' : rate >= 50 ? 'text-yellow-400' : 'text-red-400';
+        return `
         <tr class="table-row">
           <td class="py-3 px-3">${{(publicTokenCurrentPage - 1) * parseInt(document.getElementById('publicTokenPageSize').value) + i + 1}}</td>
-          <td class="py-3 px-3">${{t.username || '匿名'}}</td>
+          <td class="py-3 px-3">${{username}}</td>
           <td class="py-3 px-3">${{renderTokenStatus(t.status)}}</td>
-          <td class="py-3 px-3"><span class="${{(t.success_rate || 0) >= 80 ? 'text-green-400' : (t.success_rate || 0) >= 50 ? 'text-yellow-400' : 'text-red-400'}}">${{(t.success_rate || 0).toFixed(1)}}%</span></td>
+          <td class="py-3 px-3"><span class="${{rateClass}}">${{formatSuccessRate(rate, 1)}}</span></td>
           <td class="py-3 px-3">${{t.use_count || 0}}</td>
           <td class="py-3 px-3">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
         </tr>
-      `).join('');
+      `;
+      }}).join('');
     }}
 
     function renderPublicTokenPagination(total, pageSize, totalPages) {{
@@ -4305,6 +5286,7 @@ def render_user_page(user) -> str:
       pages.innerHTML = html;
     }}
 
+    applySelfUseMode();
     showTab('tokens');
     showTokenSubTab('mine');
     setGreeting();
@@ -4323,18 +5305,31 @@ def render_user_page(user) -> str:
 
 def render_tokens_page(user=None) -> str:
     """Render the public token pool page."""
+    from kiro_gateway.metrics import metrics
+
+    self_use_enabled = metrics.is_self_use_enabled()
+    body_self_use_attr = "true" if self_use_enabled else "false"
     login_section = '<a href="/user" class="btn-primary">用户中心</a>' if user else '<a href="/login" class="btn-primary">登录添加</a>'
     return f'''<!DOCTYPE html>
 <html lang="zh">
 <head>{COMMON_HEAD}</head>
-<body>
+<body data-self-use="{body_self_use_attr}">
   {COMMON_NAV}
   <main class="max-w-4xl mx-auto px-4 py-8">
-    <div class="text-center mb-8">
+    <div class="card mb-6 self-use-only">
+      <div class="flex items-start gap-3">
+        <div class="text-2xl">🔒</div>
+        <div>
+          <h2 class="font-bold">自用模式已开启</h2>
+          <p class="text-sm mt-1" style="color: var(--text-muted);">公开 Token 池暂不开放，请使用私有 Token。</p>
+        </div>
+      </div>
+    </div>
+    <div class="text-center mb-8 public-only">
       <h1 class="text-3xl font-bold mb-2">🌐 公开 Token 池</h1>
       <p style="color: var(--text-muted);">社区添加的 Refresh Token，供所有用户共享使用</p>
     </div>
-    <div class="grid grid-cols-2 gap-4 mb-8">
+    <div class="grid grid-cols-2 gap-4 mb-8 public-only">
       <div class="card text-center">
         <div class="text-4xl font-bold text-green-400" id="poolCount">-</div>
         <div style="color: var(--text-muted);">可用 Token</div>
@@ -4344,13 +5339,13 @@ def render_tokens_page(user=None) -> str:
         <div style="color: var(--text-muted);">平均成功率</div>
       </div>
     </div>
-    <div class="card mb-6">
+    <div class="card mb-6 public-only">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-bold">Token 列表</h2>
         {login_section}
       </div>
       <div class="table-responsive">
-        <table class="w-full">
+        <table class="w-full data-table">
           <thead>
             <tr style="border-bottom: 1px solid var(--border);">
               <th class="text-left py-3 px-3">#</th>
@@ -4363,7 +5358,7 @@ def render_tokens_page(user=None) -> str:
         </table>
       </div>
     </div>
-    <div class="card">
+    <div class="card public-only">
       <h3 class="font-bold mb-3">💡 如何使用</h3>
       <ol class="list-decimal list-inside space-y-2" style="color: var(--text-muted);">
         <li>通过 LinuxDo 或 GitHub 登录本站</li>
@@ -4376,14 +5371,33 @@ def render_tokens_page(user=None) -> str:
   </main>
   {COMMON_FOOTER}
   <script>
+    const SELF_USE_MODE = {str(self_use_enabled).lower()};
+    function normalizeSuccessRate(rate) {{
+      const value = Number(rate);
+      if (!Number.isFinite(value)) return null;
+      return value <= 1 ? value * 100 : value;
+    }}
+    function formatSuccessRate(rate, digits = 1) {{
+      const percent = normalizeSuccessRate(rate);
+      if (percent === null) return '-';
+      return percent.toFixed(digits) + '%';
+    }}
     async function loadPool() {{
       try {{
+        if (SELF_USE_MODE) return;
         const r = await fetch('/api/public-tokens');
+        if (!r.ok) {{
+          const tb = document.getElementById('poolTable');
+          if (tb) {{
+            tb.innerHTML = '<tr><td colspan="4" class="py-6 text-center" style="color: var(--text-muted);">自用模式下不开放公开 Token 池</td></tr>';
+          }}
+          return;
+        }}
         const d = await r.json();
         document.getElementById('poolCount').textContent = d.count || 0;
         const tokens = d.tokens || [];
         if (tokens.length > 0) {{
-          const avgRate = tokens.reduce((sum, t) => sum + t.success_rate, 0) / tokens.length;
+          const avgRate = tokens.reduce((sum, t) => sum + (normalizeSuccessRate(t.success_rate) ?? 0), 0) / tokens.length;
           document.getElementById('avgRate').textContent = avgRate.toFixed(1) + '%';
         }} else {{ document.getElementById('avgRate').textContent = '-'; }}
         const tb = document.getElementById('poolTable');
@@ -4391,14 +5405,19 @@ def render_tokens_page(user=None) -> str:
           tb.innerHTML = '<tr><td colspan="4" class="py-6 text-center" style="color: var(--text-muted);">暂无公开 Token</td></tr>';
           return;
         }}
-        tb.innerHTML = tokens.map((t, i) => `
+        tb.innerHTML = tokens.map((t, i) => {{
+          const username = escapeHtml(t.username || '匿名');
+          const rate = normalizeSuccessRate(t.success_rate) ?? 0;
+          const rateClass = rate >= 80 ? 'text-green-400' : rate >= 50 ? 'text-yellow-400' : 'text-red-400';
+          return `
           <tr style="border-bottom: 1px solid var(--border);">
             <td class="py-3 px-3">${{i + 1}}</td>
-            <td class="py-3 px-3">${{t.username || '匿名'}}</td>
-            <td class="py-3 px-3"><span class="${{t.success_rate >= 80 ? 'text-green-400' : t.success_rate >= 50 ? 'text-yellow-400' : 'text-red-400'}}">${{t.success_rate}}%</span></td>
+            <td class="py-3 px-3">${{username}}</td>
+            <td class="py-3 px-3"><span class="${{rateClass}}">${{formatSuccessRate(rate, 1)}}</span></td>
             <td class="py-3 px-3" style="color: var(--text-muted);">${{t.last_used ? new Date(t.last_used).toLocaleString() : '-'}}</td>
           </tr>
-        `).join('');
+        `;
+        }}).join('');
       }} catch (e) {{ console.error(e); }}
     }}
     loadPool();
@@ -4410,6 +5429,10 @@ def render_tokens_page(user=None) -> str:
 
 def render_login_page() -> str:
     """Render the login selection page with multiple OAuth2 providers."""
+    from kiro_gateway.metrics import metrics
+
+    self_use_enabled = metrics.is_self_use_enabled()
+    body_self_use_attr = "true" if self_use_enabled else "false"
     return f'''<!DOCTYPE html>
 <html lang="zh">
 <head>{COMMON_HEAD}
@@ -4445,7 +5468,7 @@ def render_login_page() -> str:
     }}
   </style>
 </head>
-<body>
+<body data-self-use="{body_self_use_attr}">
   {COMMON_NAV}
 
   <main class="flex-1 flex items-center justify-center py-12 px-4" style="min-height: calc(100vh - 200px);">
@@ -4455,6 +5478,9 @@ def render_login_page() -> str:
           <div class="logo-bounce inline-block text-6xl mb-4">⚡</div>
           <h1 class="text-2xl font-bold mb-2">欢迎使用 KiroGate</h1>
           <p style="color: var(--text-muted);">选择登录方式开始使用</p>
+        </div>
+        <div class="self-use-only mb-6 px-4 py-3 rounded-lg text-sm" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #d97706;">
+          自用模式已开启：仅限已注册用户登录。
         </div>
 
         <div class="space-y-4">
