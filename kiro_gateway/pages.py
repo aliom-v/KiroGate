@@ -1318,6 +1318,7 @@ def render_swagger_page() -> str:
         url: "/openapi.json",
         dom_id: '#swagger-ui',
         deepLinking: true,
+        persistAuthorization: true,
         presets: [
           SwaggerUIBundle.presets.apis,
           SwaggerUIBundle.SwaggerUIStandalonePreset
