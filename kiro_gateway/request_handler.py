@@ -110,7 +110,8 @@ class RequestHandler:
         response,
         http_client: KiroHttpClient,
         endpoint_name: str,
-        error_format: str = "openai"
+        error_format: str = "openai",
+        request: Optional[Request] = None
     ) -> JSONResponse:
         """
         处理 API 错误。
@@ -135,12 +136,21 @@ class RequestHandler:
 
         # 尝试解析 JSON 错误响应
         error_message = error_text
+        error_reason = None
         try:
             error_json = json.loads(error_text)
-            if "message" in error_json:
-                error_message = error_json["message"]
+            if isinstance(error_json, dict):
                 if "reason" in error_json:
-                    error_message = f"{error_message} (reason: {error_json['reason']})"
+                    error_reason = str(error_json["reason"])
+                if "message" in error_json:
+                    error_message = error_json["message"]
+                elif "error" in error_json and isinstance(error_json["error"], dict):
+                    if "message" in error_json["error"]:
+                        error_message = error_json["error"]["message"]
+                    if not error_reason and "reason" in error_json["error"]:
+                        error_reason = str(error_json["error"]["reason"])
+                if error_reason:
+                    error_message = f"{error_message} (reason: {error_reason})"
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -148,6 +158,17 @@ class RequestHandler:
 
         if debug_logger:
             debug_logger.flush_on_error(response.status_code, error_message)
+
+        if request and hasattr(request.state, "donated_token_id"):
+            reason_text = error_reason or error_message
+            if "MONTHLY_REQUEST_COUNT" in reason_text:
+                try:
+                    from kiro_gateway.database import user_db
+                    token_id = request.state.donated_token_id
+                    user_db.set_token_status(token_id, "expired")
+                    logger.warning(f"Token {token_id} marked expired due to monthly limit")
+                except Exception as e:
+                    logger.warning(f"Failed to mark token expired: {e}")
 
         # 根据格式返回错误
         if error_format == "anthropic":
@@ -463,7 +484,8 @@ class RequestHandler:
                     response,
                     http_client,
                     endpoint_name,
-                    response_format
+                    response_format,
+                    request=request
                 )
 
             # 准备 token 计数数据

@@ -5,6 +5,9 @@ primary_region = "nrt"
   # 使用外部已构建镜像时可以为空
   # image = "registry.fly.io/kirogate:latest"
 
+[deploy]
+  strategy = "immediate"
+
 [env]
   USER_DB_FILE = "/app/data/users.db"
 
