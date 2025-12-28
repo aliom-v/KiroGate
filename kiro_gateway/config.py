@@ -274,7 +274,7 @@ class Settings(BaseSettings):
     user_session_max_age: int = Field(default=604800, alias="USER_SESSION_MAX_AGE")
 
     # 用户 Session SameSite 策略: lax/strict/none
-    user_cookie_samesite: str = Field(default="strict", alias="USER_COOKIE_SAMESITE")
+    user_cookie_samesite: str = Field(default="lax", alias="USER_COOKIE_SAMESITE")
 
     # Token 加密密钥（32字节）
     token_encrypt_key: str = Field(default="kirogate_token_encrypt_key_32b!", alias="TOKEN_ENCRYPT_KEY")

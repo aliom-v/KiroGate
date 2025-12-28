@@ -85,6 +85,19 @@ class APIKey:
     created_at: int
 
 
+@dataclass
+class ImportKey:
+    """Admin-generated import key data model."""
+    id: int
+    user_id: int
+    key_prefix: str
+    name: Optional[str]
+    is_active: bool
+    request_count: int
+    last_used: Optional[int]
+    created_at: int
+
+
 class UserDatabase:
     """User system database manager."""
 
@@ -150,6 +163,22 @@ class UserDatabase:
                 );
                 CREATE INDEX IF NOT EXISTS idx_apikeys_user ON api_keys(user_id);
                 CREATE INDEX IF NOT EXISTS idx_apikeys_hash ON api_keys(key_hash);
+
+                -- Import Keys table (admin-generated)
+                CREATE TABLE IF NOT EXISTS import_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    key_hash TEXT UNIQUE NOT NULL,
+                    key_prefix TEXT NOT NULL,
+                    name TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    request_count INTEGER DEFAULT 0,
+                    last_used INTEGER,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_import_keys_user ON import_keys(user_id);
+                CREATE INDEX IF NOT EXISTS idx_import_keys_hash ON import_keys(key_hash);
 
                 -- Token health check logs
                 CREATE TABLE IF NOT EXISTS token_health (
@@ -400,6 +429,7 @@ class UserDatabase:
         search: str = "",
         is_admin: Optional[bool] = None,
         is_banned: Optional[bool] = None,
+        trust_level: Optional[int] = None,
         sort_field: str = "created_at",
         sort_order: str = "desc"
     ) -> List[User]:
@@ -418,6 +448,9 @@ class UserDatabase:
         if is_banned is not None:
             where.append("is_banned = ?")
             params.append(1 if is_banned else 0)
+        if trust_level is not None:
+            where.append("trust_level = ?")
+            params.append(trust_level)
 
         allowed_sort = {
             "id": "id",
@@ -426,6 +459,8 @@ class UserDatabase:
             "last_login": "last_login",
             "trust_level": "trust_level",
             "token_count": "(SELECT COUNT(*) FROM tokens t WHERE t.user_id = users.id)",
+            "api_key_count": "(SELECT COUNT(*) FROM api_keys k WHERE k.user_id = users.id AND k.is_active = 1)",
+            "is_banned": "is_banned",
         }
         sort_column = allowed_sort.get(sort_field, "created_at")
         order = "ASC" if sort_order.lower() == "asc" else "DESC"
@@ -444,7 +479,8 @@ class UserDatabase:
         self,
         search: str = "",
         is_admin: Optional[bool] = None,
-        is_banned: Optional[bool] = None
+        is_banned: Optional[bool] = None,
+        trust_level: Optional[int] = None
     ) -> int:
         """Get total user count with optional filters."""
         where: list[str] = []
@@ -461,6 +497,9 @@ class UserDatabase:
         if is_banned is not None:
             where.append("is_banned = ?")
             params.append(1 if is_banned else 0)
+        if trust_level is not None:
+            where.append("trust_level = ?")
+            params.append(trust_level)
 
         query = "SELECT COUNT(*) FROM users"
         if where:
@@ -531,6 +570,16 @@ class UserDatabase:
                     (user_id, encrypted, token_hash, visibility, is_anonymous, now)
                 )
                 return True, "Token 添加成功"
+
+    def token_exists(self, refresh_token: str) -> bool:
+        """Check if a refresh token already exists."""
+        token_hash = self._hash_token(refresh_token)
+        with self._lock:
+            with self._get_conn() as conn:
+                existing = conn.execute(
+                    "SELECT 1 FROM tokens WHERE token_hash = ? LIMIT 1", (token_hash,)
+                ).fetchone()
+                return existing is not None
 
     def get_user_tokens(
         self,
@@ -780,6 +829,39 @@ class UserDatabase:
                 )
                 return plain_key, api_key
 
+    def generate_import_key(self, user_id: int, name: Optional[str] = None) -> Tuple[str, ImportKey]:
+        """
+        Generate a new import key for user (admin-only).
+
+        Returns:
+            (plain_key, ImportKey object) - plain_key is only returned once!
+        """
+        random_part = secrets.token_hex(24)
+        plain_key = f"ik-{random_part}"
+        key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
+        key_prefix = f"ik-{random_part[:4]}...{random_part[-4:]}"
+        now = int(time.time() * 1000)
+
+        with self._lock:
+            with self._get_conn() as conn:
+                cursor = conn.execute(
+                    """INSERT INTO import_keys (user_id, key_hash, key_prefix, name, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (user_id, key_hash, key_prefix, name, now)
+                )
+                key_id = cursor.lastrowid
+                import_key = ImportKey(
+                    id=key_id,
+                    user_id=user_id,
+                    key_prefix=key_prefix,
+                    name=name,
+                    is_active=True,
+                    request_count=0,
+                    last_used=None,
+                    created_at=now
+                )
+                return plain_key, import_key
+
     def verify_api_key(self, plain_key: str) -> Optional[Tuple[int, APIKey]]:
         """
         Verify an API key.
@@ -799,6 +881,27 @@ class UserDatabase:
             if row:
                 api_key = self._row_to_apikey(row)
                 return api_key.user_id, api_key
+        return None
+
+    def verify_import_key(self, plain_key: str) -> Optional[Tuple[int, ImportKey]]:
+        """
+        Verify an import key.
+
+        Returns:
+            (user_id, ImportKey) if valid, None otherwise
+        """
+        if not plain_key.startswith("ik-"):
+            return None
+
+        key_hash = hashlib.sha256(plain_key.encode()).hexdigest()
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM import_keys WHERE key_hash = ? AND is_active = 1",
+                (key_hash,)
+            ).fetchone()
+            if row:
+                import_key = self._row_to_import_key(row)
+                return import_key.user_id, import_key
         return None
 
     def get_user_api_keys(
@@ -825,6 +928,7 @@ class UserDatabase:
         allowed_sort = {
             "key_prefix": "key_prefix",
             "name": "name",
+            "is_active": "is_active",
             "request_count": "request_count",
             "last_used": "last_used",
             "created_at": "created_at",
@@ -861,18 +965,31 @@ class UserDatabase:
         with self._get_conn() as conn:
             return conn.execute(query, params).fetchone()[0]
 
-    def revoke_api_key(self, key_id: int, user_id: Optional[int] = None) -> bool:
-        """Revoke an API key. If user_id provided, verify ownership."""
+    def set_api_key_active(
+        self,
+        key_id: int,
+        user_id: Optional[int] = None,
+        is_active: bool = True
+    ) -> bool:
+        """Enable/disable an API key. If user_id provided, verify ownership."""
+        value = 1 if is_active else 0
         with self._lock:
             with self._get_conn() as conn:
                 if user_id:
-                    conn.execute(
-                        "UPDATE api_keys SET is_active = 0 WHERE id = ? AND user_id = ?",
-                        (key_id, user_id)
+                    cursor = conn.execute(
+                        "UPDATE api_keys SET is_active = ? WHERE id = ? AND user_id = ?",
+                        (value, key_id, user_id)
                     )
                 else:
-                    conn.execute("UPDATE api_keys SET is_active = 0 WHERE id = ?", (key_id,))
-                return True
+                    cursor = conn.execute(
+                        "UPDATE api_keys SET is_active = ? WHERE id = ?",
+                        (value, key_id)
+                    )
+                return cursor.rowcount > 0
+
+    def revoke_api_key(self, key_id: int, user_id: Optional[int] = None) -> bool:
+        """Revoke an API key. If user_id provided, verify ownership."""
+        return self.set_api_key_active(key_id, user_id=user_id, is_active=False)
 
     def delete_api_key(self, key_id: int, user_id: Optional[int] = None) -> bool:
         """Delete an API key. If user_id provided, verify ownership."""
@@ -887,6 +1004,13 @@ class UserDatabase:
                     conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
                 return True
 
+    def delete_import_key(self, key_id: int) -> bool:
+        """Delete an import key."""
+        with self._lock:
+            with self._get_conn() as conn:
+                conn.execute("DELETE FROM import_keys WHERE id = ?", (key_id,))
+                return True
+
     def record_api_key_usage(self, key_id: int) -> None:
         """Record API key usage."""
         now = int(time.time() * 1000)
@@ -894,6 +1018,16 @@ class UserDatabase:
             with self._get_conn() as conn:
                 conn.execute(
                     "UPDATE api_keys SET request_count = request_count + 1, last_used = ? WHERE id = ?",
+                    (now, key_id)
+                )
+
+    def record_import_key_usage(self, key_id: int) -> None:
+        """Record import key usage."""
+        now = int(time.time() * 1000)
+        with self._lock:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "UPDATE import_keys SET request_count = request_count + 1, last_used = ? WHERE id = ?",
                     (now, key_id)
                 )
 
@@ -909,6 +1043,19 @@ class UserDatabase:
     def _row_to_apikey(self, row: sqlite3.Row) -> APIKey:
         """Convert database row to APIKey object."""
         return APIKey(
+            id=row["id"],
+            user_id=row["user_id"],
+            key_prefix=row["key_prefix"],
+            name=row["name"],
+            is_active=bool(row["is_active"]),
+            request_count=row["request_count"],
+            last_used=row["last_used"],
+            created_at=row["created_at"]
+        )
+
+    def _row_to_import_key(self, row: sqlite3.Row) -> ImportKey:
+        """Convert database row to ImportKey object."""
+        return ImportKey(
             id=row["id"],
             user_id=row["user_id"],
             key_prefix=row["key_prefix"],

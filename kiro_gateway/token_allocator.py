@@ -83,14 +83,23 @@ class SmartTokenAllocator:
         Raises:
             NoTokenAvailable: 无可用 Token
         """
+        from kiro_gateway.metrics import metrics
+        self_use_enabled = metrics.is_self_use_enabled()
+
         if user_id:
             # 用户请求: 优先使用用户自己的私有 Token
             user_tokens = user_db.get_user_tokens(user_id)
-            active_tokens = [t for t in user_tokens if t.status == "active"]
+            active_tokens = [
+                t for t in user_tokens
+                if t.status == "active" and (not self_use_enabled or t.visibility == "private")
+            ]
             if active_tokens:
                 best = max(active_tokens, key=self.calculate_score)
                 manager = await self._get_manager(best)
                 return best, manager
+
+        if self_use_enabled:
+            raise NoTokenAvailable("Self-use mode: public token pool is disabled")
 
         # 使用公共 Token 池
         public_tokens = user_db.get_public_tokens()

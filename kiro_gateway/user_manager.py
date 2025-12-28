@@ -272,6 +272,9 @@ class UserManager:
             if user.is_banned:
                 return None, "用户已被封禁"
         else:
+            from kiro_gateway.metrics import metrics
+            if metrics.is_self_use_enabled():
+                return None, "自用模式下暂不开放注册"
             # Create new user
             user = user_db.create_user(
                 linuxdo_id=linuxdo_id,
@@ -326,6 +329,9 @@ class UserManager:
             if user.is_banned:
                 return None, "用户已被封禁"
         else:
+            from kiro_gateway.metrics import metrics
+            if metrics.is_self_use_enabled():
+                return None, "自用模式下暂不开放注册"
             # Create new user with GitHub ID
             user = user_db.create_user(
                 github_id=github_id,
