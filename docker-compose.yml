@@ -52,6 +52,10 @@ services:
       - USER_SESSION_SECRET=${USER_SESSION_SECRET:-change-me-in-production}
       - TOKEN_ENCRYPT_KEY=${TOKEN_ENCRYPT_KEY:-change-me-32-bytes-key!!}
 
+      # 静态资源代理配置
+      - STATIC_ASSETS_PROXY_ENABLED=${STATIC_ASSETS_PROXY_ENABLED:-true}
+      - STATIC_ASSETS_PROXY_BASE=${STATIC_ASSETS_PROXY_BASE:-https://proxy.jhun.edu.kg}
+
     volumes:
       # 持久化统计数据
       - ./data:/app/data

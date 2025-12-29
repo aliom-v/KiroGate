@@ -10,6 +10,8 @@ primary_region = "nrt"
 
 [env]
   USER_DB_FILE = "/app/data/users.db"
+  # 推荐：国外服务器关闭静态资源代理，直连 CDN 更快
+  # STATIC_ASSETS_PROXY_ENABLED = "false"
 
 [http_service]
   internal_port = 8000
