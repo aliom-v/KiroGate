@@ -654,7 +654,7 @@ COMMON_NAV = f'''
           <div id="siteAnnouncementContent" class="text-sm content"></div>
         </div>
       </div>
-      <div class="flex items-center gap-2">
+      <div id="announcementActions" class="flex items-center gap-2">
         <button onclick="markAnnouncementRead()" class="btn-announcement">已读</button>
         <button onclick="dismissAnnouncement()" class="btn-announcement-outline">不再提醒</button>
       </div>
@@ -709,9 +709,14 @@ COMMON_NAV = f'''
         currentAnnouncementId = d.announcement.id;
         const banner = document.getElementById('siteAnnouncement');
         const content = document.getElementById('siteAnnouncementContent');
+        const actions = document.getElementById('announcementActions');
+        const canMark = d.can_mark !== false;
         if (banner && content) {{
-          content.textContent = d.announcement.content;
+          content.innerHTML = d.announcement.content;
           banner.style.display = 'block';
+        }}
+        if (actions) {{
+          actions.style.display = canMark ? 'flex' : 'none';
         }}
       }} catch {{}}
     }}
@@ -801,9 +806,10 @@ COMMON_NAV = f'''
               <span>${{safeName || '用户中心'}}</span>
             </a>`;
           }}
-          loadAnnouncement();
         }}
-      }} catch {{}}
+      }} catch {{}} finally {{
+        loadAnnouncement();
+      }}
     }})();
   </script>
 '''
@@ -819,19 +825,11 @@ COMMON_FOOTER = '''
         <p class="text-sm text-center mb-4" style="color: var(--text-muted);">OpenAI & Anthropic 兼容的 Kiro API 网关</p>
         <div class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm mb-6">
           <span class="flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-green-400"></span>
-            <span style="color: var(--text);">Deno</span>
-            <a href="https://kirogate.deno.dev" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">Demo</a>
-            <span style="color: var(--border-dark);">·</span>
-            <a href="https://github.com/dext7r/KiroGate" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">GitHub</a>
-          </span>
-          <span class="hidden sm:inline" style="color: var(--border-dark);">|</span>
-          <span class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-400"></span>
             <span style="color: var(--text);">Python</span>
-            <a href="https://kirogate.fly.dev" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">Demo</a>
+            <a href="https://kirogate.fly.dev" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">Online</a>
             <span style="color: var(--border-dark);">·</span>
-            <a href="https://github.com/aliom-v/KiroGate" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">GitHub</a>
+            <a href="https://github.com/dext7r/KiroGate" class="text-indigo-400 hover:text-indigo-300 transition-colors" target="_blank">GitHub</a>
           </span>
         </div>
         <p class="text-xs opacity-60" style="color: var(--text-muted);">欲买桂花同载酒 终不似少年游</p>
@@ -2631,7 +2629,13 @@ def render_admin_page() -> str:
         </div>
         <textarea id="announcementContent" class="w-full h-36 p-3 rounded-lg" style="background: var(--bg-input); border: 1px solid var(--border);" placeholder="请输入公告内容..."></textarea>
         <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
-          <span class="text-xs" style="color: var(--text-muted);">最近更新：<span id="announcementUpdatedAt">-</span></span>
+          <div class="flex flex-wrap items-center gap-4 text-xs" style="color: var(--text-muted);">
+            <span>最近更新：<span id="announcementUpdatedAt">-</span></span>
+            <label class="flex items-center gap-2">
+              <input type="checkbox" id="announcementGuestToggle">
+              <span>未登录可见</span>
+            </label>
+          </div>
           <div class="flex items-center gap-2">
             <button onclick="refreshAnnouncement()" class="btn" style="background: var(--bg-input); border: 1px solid var(--border);">刷新</button>
             <button onclick="saveAnnouncement()" class="btn btn-primary">保存</button>
@@ -2791,6 +2795,8 @@ def render_admin_page() -> str:
         const ann = d.announcement || null;
         currentAnnouncementId = ann ? ann.id : null;
         document.getElementById('announcementContent').value = ann?.content || '';
+        const guestToggle = document.getElementById('announcementGuestToggle');
+        if (guestToggle) guestToggle.checked = !!ann?.allow_guest;
         document.getElementById('announcementToggle').checked = !!d.is_active;
         const updated = ann?.updated_at ? new Date(ann.updated_at).toLocaleString() : '-';
         document.getElementById('announcementUpdatedAt').textContent = updated;
@@ -2800,6 +2806,7 @@ def render_admin_page() -> str:
     async function saveAnnouncement() {{
       const content = document.getElementById('announcementContent').value.trim();
       const isActive = document.getElementById('announcementToggle').checked;
+      const allowGuest = document.getElementById('announcementGuestToggle')?.checked;
       if (isActive && !content) {{
         alert('请填写公告内容');
         return;
@@ -2807,6 +2814,7 @@ def render_admin_page() -> str:
       const fd = new FormData();
       fd.append('content', content);
       fd.append('is_active', isActive ? 'true' : 'false');
+      fd.append('allow_guest', allowGuest ? 'true' : 'false');
       try {{
         await fetchJson('/admin/api/announcement', {{ method: 'POST', body: fd }});
         alert('保存成功');

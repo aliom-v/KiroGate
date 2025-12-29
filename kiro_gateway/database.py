@@ -196,6 +196,7 @@ class UserDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     content TEXT NOT NULL,
                     is_active INTEGER DEFAULT 1,
+                    allow_guest INTEGER DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -220,6 +221,11 @@ class UserDatabase:
             if "is_anonymous" not in columns:
                 conn.execute(
                     "ALTER TABLE tokens ADD COLUMN is_anonymous INTEGER DEFAULT 0"
+                )
+            announcement_columns = {row[1] for row in conn.execute("PRAGMA table_info(announcements)")}
+            if "allow_guest" not in announcement_columns:
+                conn.execute(
+                    "ALTER TABLE announcements ADD COLUMN allow_guest INTEGER DEFAULT 0"
                 )
             conn.commit()
         logger.info(f"User database initialized: {self._db_path}")
@@ -278,10 +284,14 @@ class UserDatabase:
 
     def _row_to_announcement(self, row: sqlite3.Row) -> Dict:
         """Convert database row to announcement dict."""
+        allow_guest = False
+        if hasattr(row, "keys") and "allow_guest" in row.keys():
+            allow_guest = bool(row["allow_guest"])
         return {
             "id": row["id"],
             "content": row["content"],
             "is_active": bool(row["is_active"]),
+            "allow_guest": allow_guest,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -308,15 +318,15 @@ class UserDatabase:
             with self._get_conn() as conn:
                 conn.execute("UPDATE announcements SET is_active = 0 WHERE is_active = 1")
 
-    def create_announcement(self, content: str, is_active: bool) -> int:
+    def create_announcement(self, content: str, is_active: bool, allow_guest: bool = False) -> int:
         """Create a new announcement."""
         now = int(time.time() * 1000)
         with self._lock:
             with self._get_conn() as conn:
                 cursor = conn.execute(
-                    """INSERT INTO announcements (content, is_active, created_at, updated_at)
-                       VALUES (?, ?, ?, ?)""",
-                    (content, 1 if is_active else 0, now, now)
+                    """INSERT INTO announcements (content, is_active, allow_guest, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (content, 1 if is_active else 0, 1 if allow_guest else 0, now, now)
                 )
                 return cursor.lastrowid
 

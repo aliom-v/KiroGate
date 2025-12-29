@@ -1951,6 +1951,7 @@ async def admin_update_announcement(
     request: Request,
     content: str = Form(""),
     is_active: str = Form("false"),
+    allow_guest: str = Form("false"),
     _csrf: None = Depends(require_same_origin)
 ):
     """Update announcement content and toggle."""
@@ -1960,18 +1961,19 @@ async def admin_update_announcement(
 
     content = content.strip()
     active = str(is_active).lower() in ("1", "true", "on", "yes")
+    allow_guest_flag = str(allow_guest).lower() in ("1", "true", "on", "yes")
     from kiro_gateway.database import user_db
 
     if active:
         if not content:
             return JSONResponse(status_code=400, content={"error": "公告内容不能为空"})
         user_db.deactivate_announcements()
-        announcement_id = user_db.create_announcement(content, True)
+        announcement_id = user_db.create_announcement(content, True, allow_guest_flag)
         return {"success": True, "id": announcement_id}
 
     user_db.deactivate_announcements()
     if content:
-        announcement_id = user_db.create_announcement(content, False)
+        announcement_id = user_db.create_announcement(content, False, allow_guest_flag)
         return {"success": True, "id": announcement_id, "active": False}
     return {"success": True, "active": False}
 
@@ -2164,13 +2166,25 @@ async def user_get_profile(request: Request):
 @router.get("/user/api/announcement", include_in_schema=False)
 async def user_get_announcement(request: Request):
     """Get active announcement for current user."""
-    user = get_current_user(request)
-    if not user:
-        return JSONResponse(status_code=401, content={"error": "未登录"})
     from kiro_gateway.database import user_db
     announcement = user_db.get_active_announcement()
     if not announcement:
         return {"active": False}
+    user = get_current_user(request)
+    allow_guest = bool(announcement.get("allow_guest"))
+    if not user:
+        if not allow_guest:
+            return {"active": False}
+        return {
+            "active": True,
+            "announcement": {
+                "id": announcement["id"],
+                "content": announcement["content"],
+                "updated_at": announcement["updated_at"],
+            },
+            "can_mark": False,
+            "viewer": "guest",
+        }
     status = user_db.get_announcement_status(user.id, announcement["id"])
     if status.get("is_read") or status.get("is_dismissed"):
         return {"active": False}
@@ -2180,7 +2194,9 @@ async def user_get_announcement(request: Request):
             "id": announcement["id"],
             "content": announcement["content"],
             "updated_at": announcement["updated_at"],
-        }
+        },
+        "can_mark": True,
+        "viewer": "user",
     }
 
 
