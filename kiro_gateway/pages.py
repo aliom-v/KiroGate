@@ -2379,12 +2379,18 @@ def render_admin_page() -> str:
         <div class="flex flex-wrap justify-between items-center gap-4 mb-4 toolbar">
           <h2 class="text-lg font-semibold">👥 注册用户管理</h2>
           <div class="flex items-center gap-2">
-            <input type="text" id="usersSearch" placeholder="搜索用户名..." oninput="filterUsers()"
+            <input type="text" id="usersSearch" placeholder="搜索用户名/邮箱..." oninput="filterUsers()"
               class="px-3 py-2 rounded-lg text-sm w-40" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
             <select id="usersStatusFilter" onchange="filterUsers()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
               <option value="">全部状态</option>
               <option value="false">正常</option>
               <option value="true">已封禁</option>
+            </select>
+            <select id="usersApprovalFilter" onchange="filterUsers()" class="px-3 py-2 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
+              <option value="">全部审核</option>
+              <option value="pending">待审核</option>
+              <option value="approved">已通过</option>
+              <option value="rejected">已拒绝</option>
             </select>
             <input type="number" id="usersTrustLevel" min="0" placeholder="信任等级" oninput="filterUsers()"
               class="px-3 py-2 rounded-lg text-sm w-28" style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text);">
@@ -2395,6 +2401,8 @@ def render_admin_page() -> str:
             </select>
             <button onclick="batchBanUsers()" id="batchBanUsersBtn" class="btn btn-danger text-sm">批量封禁</button>
             <button onclick="batchUnbanUsers()" id="batchUnbanUsersBtn" class="btn btn-success text-sm">批量解禁</button>
+            <button onclick="batchApproveUsers()" id="batchApproveUsersBtn" class="btn btn-success text-sm">批量通过</button>
+            <button onclick="batchRejectUsers()" id="batchRejectUsersBtn" class="btn btn-danger text-sm">批量拒绝</button>
             <button onclick="refreshUsers()" class="btn btn-primary text-sm">刷新</button>
           </div>
         </div>
@@ -2407,16 +2415,18 @@ def render_admin_page() -> str:
                 </th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('id')">ID ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('username')">用户名 ↕</th>
+                <th class="text-left py-3 px-3">邮箱</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('trust_level')">信任等级 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('token_count')">Token 数 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('api_key_count')">API Key ↕</th>
+                <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('approval_status')">审核 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('is_banned')">状态 ↕</th>
                 <th class="text-left py-3 px-3 cursor-pointer hover:text-indigo-400" onclick="sortUsers('created_at')">注册时间 ↕</th>
                 <th class="text-left py-3 px-3">操作</th>
               </tr>
             </thead>
             <tbody id="usersTable">
-              <tr><td colspan="9" class="py-6 text-center" style="color: var(--text-muted);">加载中...</td></tr>
+              <tr><td colspan="11" class="py-6 text-center" style="color: var(--text-muted);">加载中...</td></tr>
             </tbody>
           </table>
         </div>
@@ -2702,6 +2712,16 @@ def render_admin_page() -> str:
             </div>
             <label class="switch">
               <input type="checkbox" id="selfUseToggle" onchange="toggleSelfUse(this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="flex items-center justify-between p-4 rounded-lg mt-4" style="background: var(--bg-input);">
+            <div>
+              <div class="font-medium">注册审核</div>
+              <div class="text-sm" style="color: var(--text-muted);">开启后新注册用户需审核通过</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="approvalToggle" onchange="toggleApproval(this.checked)">
               <span class="slider"></span>
             </label>
           </div>
@@ -3134,6 +3154,8 @@ def render_admin_page() -> str:
         document.getElementById('siteToggle').checked = siteEnabled;
         const selfUseToggle = document.getElementById('selfUseToggle');
         if (selfUseToggle) selfUseToggle.checked = !!d.self_use_enabled;
+        const approvalToggle = document.getElementById('approvalToggle');
+        if (approvalToggle) approvalToggle.checked = !!d.require_approval;
         // Token status
         document.getElementById('tokenStatus').innerHTML = d.token_valid ? '<span class="text-green-400">有效</span>' : '<span class="text-yellow-400">未知</span>';
         document.getElementById('totalRequests').textContent = d.total_requests || 0;
@@ -3498,6 +3520,13 @@ def render_admin_page() -> str:
       refreshStats();
     }}
 
+    async function toggleApproval(enabled) {{
+      const fd = new FormData();
+      fd.append('enabled', enabled);
+      await fetch('/admin/api/toggle-approval', {{ method: 'POST', body: fd }});
+      refreshStats();
+    }}
+
     async function refreshToken() {{
       const r = await fetch('/admin/api/refresh-token', {{ method: 'POST' }});
       const d = await r.json();
@@ -3696,6 +3725,7 @@ def render_admin_page() -> str:
         const pageSize = parseInt(document.getElementById('usersPageSize').value);
         const search = document.getElementById('usersSearch').value.trim();
         const statusValue = document.getElementById('usersStatusFilter')?.value ?? '';
+        const approvalValue = document.getElementById('usersApprovalFilter')?.value ?? '';
         const trustLevelRaw = document.getElementById('usersTrustLevel')?.value ?? '';
         const trustLevel = trustLevelRaw === '' ? undefined : parseInt(trustLevelRaw, 10);
         const d = await fetchJson('/admin/api/users' + buildQuery({{
@@ -3703,6 +3733,7 @@ def render_admin_page() -> str:
           page_size: pageSize,
           search,
           is_banned: statusValue === '' ? undefined : statusValue,
+          approval_status: approvalValue === '' ? undefined : approvalValue,
           trust_level: Number.isFinite(trustLevel) ? trustLevel : undefined,
           sort_field: usersSortField,
           sort_order: usersSortAsc ? 'asc' : 'desc'
@@ -3752,6 +3783,21 @@ def render_admin_page() -> str:
       }}
       tb.innerHTML = users.map(u => {{
         const username = escapeHtml(u.username || '-');
+        const email = escapeHtml(u.email || '-');
+        const approval = u.approval_status || 'approved';
+        const approvalBadge = approval === 'approved'
+          ? '<span class="text-green-400">已通过</span>'
+          : approval === 'pending'
+            ? '<span class="text-yellow-400">待审核</span>'
+            : '<span class="text-red-400">已拒绝</span>';
+        const approvalActions = [
+          approval !== 'approved'
+            ? `<button onclick="approveUser(${{u.id}})" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30">通过</button>`
+            : '',
+          approval !== 'rejected'
+            ? `<button onclick="rejectUser(${{u.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">拒绝</button>`
+            : ''
+        ].filter(Boolean).join('');
         return `
         <tr class="table-row">
           <td class="py-3 px-3">
@@ -3759,9 +3805,11 @@ def render_admin_page() -> str:
           </td>
           <td class="py-3 px-3">${{u.id}}</td>
           <td class="py-3 px-3 font-medium">${{username}}</td>
+          <td class="py-3 px-3">${{email}}</td>
           <td class="py-3 px-3">Lv.${{u.trust_level}}</td>
           <td class="py-3 px-3">${{u.token_count}}</td>
           <td class="py-3 px-3">${{u.api_key_count}}</td>
+          <td class="py-3 px-3">${{approvalBadge}}</td>
           <td class="py-3 px-3">${{u.is_banned ? '<span class="text-red-400">已封禁</span>' : '<span class="text-green-400">正常</span>'}}</td>
           <td class="py-3 px-3">${{u.created_at ? new Date(u.created_at).toLocaleString() : '-'}}</td>
           <td class="py-3 px-3">
@@ -3769,6 +3817,7 @@ def render_admin_page() -> str:
               ? `<button onclick="unbanUser(${{u.id}})" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30">解封</button>`
               : `<button onclick="banUser(${{u.id}})" class="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">封禁</button>`
             }}
+            ${{approvalActions}}
           </td>
         </tr>
       `;
@@ -3823,6 +3872,22 @@ def render_admin_page() -> str:
       refreshUsers();
     }}
 
+    async function approveUser(userId) {{
+      if (!confirm('确定要通过此用户吗？')) return;
+      const fd = new FormData();
+      fd.append('user_id', userId);
+      await fetch('/admin/api/users/approve', {{ method: 'POST', body: fd }});
+      refreshUsers();
+    }}
+
+    async function rejectUser(userId) {{
+      if (!confirm('确定要拒绝此用户吗？')) return;
+      const fd = new FormData();
+      fd.append('user_id', userId);
+      await fetch('/admin/api/users/reject', {{ method: 'POST', body: fd }});
+      refreshUsers();
+    }}
+
     function toggleSelectAllUsers(checked) {{
       const checkboxes = document.querySelectorAll('#usersTable input[type="checkbox"]');
       checkboxes.forEach(cb => {{
@@ -3845,9 +3910,13 @@ def render_admin_page() -> str:
     function updateBatchUserButtons() {{
       const banBtn = document.getElementById('batchBanUsersBtn');
       const unbanBtn = document.getElementById('batchUnbanUsersBtn');
+      const approveBtn = document.getElementById('batchApproveUsersBtn');
+      const rejectBtn = document.getElementById('batchRejectUsersBtn');
       const hasSelection = selectedUsers.size > 0;
       if (banBtn) banBtn.disabled = !hasSelection;
       if (unbanBtn) unbanBtn.disabled = !hasSelection;
+      if (approveBtn) approveBtn.disabled = !hasSelection;
+      if (rejectBtn) rejectBtn.disabled = !hasSelection;
     }}
 
     async function batchBanUsers() {{
@@ -3876,6 +3945,38 @@ def render_admin_page() -> str:
         const fd = new FormData();
         fd.append('user_id', userId);
         return fetch('/admin/api/users/unban', {{ method: 'POST', body: fd }});
+      }});
+      await Promise.all(promises);
+      selectedUsers.clear();
+      refreshUsers();
+    }}
+
+    async function batchApproveUsers() {{
+      if (selectedUsers.size === 0) {{
+        alert('请先选择要通过的用户');
+        return;
+      }}
+      if (!confirm(`确定要通过选中的 ${{selectedUsers.size}} 个用户吗？`)) return;
+      const promises = Array.from(selectedUsers).map(userId => {{
+        const fd = new FormData();
+        fd.append('user_id', userId);
+        return fetch('/admin/api/users/approve', {{ method: 'POST', body: fd }});
+      }});
+      await Promise.all(promises);
+      selectedUsers.clear();
+      refreshUsers();
+    }}
+
+    async function batchRejectUsers() {{
+      if (selectedUsers.size === 0) {{
+        alert('请先选择要拒绝的用户');
+        return;
+      }}
+      if (!confirm(`确定要拒绝选中的 ${{selectedUsers.size}} 个用户吗？`)) return;
+      const promises = Array.from(selectedUsers).map(userId => {{
+        const fd = new FormData();
+        fd.append('user_id', userId);
+        return fetch('/admin/api/users/reject', {{ method: 'POST', body: fd }});
       }});
       await Promise.all(promises);
       selectedUsers.clear();
@@ -5791,13 +5892,36 @@ def render_tokens_page(user=None) -> str:
 </html>'''
 
 
-def render_login_page() -> str:
+def render_login_page(
+    error: str = "",
+    info: str = "",
+    email: str = "",
+    username: str = ""
+) -> str:
     """Render the login selection page with multiple OAuth2 providers."""
     from kiro_gateway.metrics import metrics
     from kiro_gateway.config import OAUTH_CLIENT_ID, GITHUB_CLIENT_ID
 
     self_use_enabled = metrics.is_self_use_enabled()
     body_self_use_attr = "true" if self_use_enabled else "false"
+    require_approval = metrics.is_require_approval()
+    safe_error = html.escape(error) if error else ""
+    safe_info = html.escape(info) if info else ""
+    safe_email = html.escape(email or "")
+    safe_username = html.escape(username or "")
+    error_html = (
+        f'<div class="mb-4 px-4 py-3 rounded-lg text-sm" '
+        f'style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">'
+        f'{safe_error}</div>'
+        if safe_error else ""
+    )
+    info_html = (
+        f'<div class="mb-4 px-4 py-3 rounded-lg text-sm" '
+        f'style="background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); color: #4ade80;">'
+        f'{safe_info}</div>'
+        if safe_info else ""
+    )
+    register_disabled = "disabled" if self_use_enabled else ""
 
     # 检查哪些登录方式已配置
     linuxdo_enabled = bool(OAUTH_CLIENT_ID)
@@ -5863,6 +5987,34 @@ def render_login_page() -> str:
     .btn-github {{ background: #24292f; color: white; }}
     .btn-github:hover {{ background: #1b1f23; }}
     .logo-bounce {{ animation: bounce 2s infinite; }}
+    .auth-label {{ font-size: 0.85rem; color: var(--text-muted); }}
+    .auth-input {{
+      width: 100%;
+      padding: 0.7rem 0.9rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text);
+    }}
+    .auth-input:focus {{
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }}
+    .btn-auth {{
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      border: none;
+      cursor: pointer;
+    }}
+    .btn-auth:disabled {{
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }}
     @keyframes bounce {{
       0%, 100% {{ transform: translateY(0); }}
       50% {{ transform: translateY(-10px); }}
@@ -5880,8 +6032,34 @@ def render_login_page() -> str:
           <h1 class="text-2xl font-bold mb-2">欢迎使用 KiroGate</h1>
           <p style="color: var(--text-muted);">选择登录方式开始使用</p>
         </div>
+        {error_html}
+        {info_html}
         <div class="self-use-only mb-6 px-4 py-3 rounded-lg text-sm" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #d97706;">
           自用模式已开启：仅限已注册用户登录。
+        </div>
+
+        <div class="space-y-4 mb-6">
+          <form method="post" action="/auth/login" class="space-y-3">
+            <div class="text-sm font-semibold">邮箱登录</div>
+            <label class="auth-label" for="loginEmail">邮箱</label>
+            <input id="loginEmail" name="email" type="email" class="auth-input" required value="{safe_email}">
+            <label class="auth-label" for="loginPassword">密码</label>
+            <input id="loginPassword" name="password" type="password" class="auth-input" required>
+            <button type="submit" class="btn-auth" style="background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%); color: #fff;">登录</button>
+          </form>
+          <form method="post" action="/auth/register" class="space-y-3">
+            <div class="text-sm font-semibold">邮箱注册</div>
+            <label class="auth-label" for="registerEmail">邮箱</label>
+            <input id="registerEmail" name="email" type="email" class="auth-input" required value="{safe_email}">
+            <label class="auth-label" for="registerUsername">用户名（可选）</label>
+            <input id="registerUsername" name="username" type="text" class="auth-input" value="{safe_username}">
+            <label class="auth-label" for="registerPassword">密码（至少 8 位）</label>
+            <input id="registerPassword" name="password" type="password" class="auth-input" required minlength="8">
+            <button type="submit" class="btn-auth" style="background: rgba(15, 23, 42, 0.9); color: #fff;" {register_disabled}>注册</button>
+            <div class="text-xs" style="color: var(--text-muted);">
+              {("注册后需管理员审核通过" if require_approval else "注册成功后可直接登录") if not self_use_enabled else "自用模式下禁止新注册"}
+            </div>
+          </form>
         </div>
 
         <div class="space-y-4">
