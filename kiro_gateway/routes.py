@@ -36,8 +36,10 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -2323,13 +2325,33 @@ IMPORT_VALIDATE_CONCURRENCY = 3
 IMPORT_ERROR_SAMPLE_LIMIT = 5
 
 
+@dataclass
+class TokenCredential:
+    """Token 凭证数据结构，支持 Social 和 IDC 两种认证方式。"""
+    refresh_token: str
+    auth_type: str = "social"  # social 或 idc
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+
+
 def _split_tokens_text(text: str) -> list[str]:
     parts = re.split(r"[,\s;]+", text.strip())
     return [part for part in parts if part]
 
 
-def _extract_refresh_tokens(payload: object) -> tuple[list[str], int, list[str]]:
-    tokens: list[str] = []
+def _extract_refresh_tokens(payload: object) -> tuple[list[TokenCredential], int, list[str]]:
+    """
+    从导入数据中提取 token 凭证。
+    
+    支持的格式：
+    1. 纯文本列表：["token1", "token2"]
+    2. 对象列表：[{"refreshToken": "...", "clientId": "...", "clientSecret": "..."}]
+    3. 嵌套对象：{"accounts": [...], "credentials": {...}}
+    
+    Returns:
+        (credentials, missing_required, missing_samples)
+    """
+    credentials: list[TokenCredential] = []
     missing_required = 0
     missing_samples: list[str] = []
 
@@ -2339,31 +2361,79 @@ def _extract_refresh_tokens(payload: object) -> tuple[list[str], int, list[str]]
         if len(missing_samples) < IMPORT_ERROR_SAMPLE_LIMIT:
             missing_samples.append(f"{path}: {reason}")
 
-    def add_token(value: object, path: str) -> None:
-        if isinstance(value, str):
-            token = value.strip()
+    def add_credential(obj: dict | str, path: str) -> None:
+        """从对象或字符串中提取凭证。"""
+        if isinstance(obj, str):
+            token = obj.strip()
             if token:
-                tokens.append(token)
+                credentials.append(TokenCredential(refresh_token=token))
                 return
-        record_missing(path, "refreshToken 为空或无效")
+            record_missing(path, "refreshToken 为空")
+            return
+        
+        if not isinstance(obj, dict):
+            record_missing(path, "类型不支持")
+            return
+        
+        # 尝试从对象中提取 refreshToken
+        refresh_token = None
+        client_id = None
+        client_secret = None
+        
+        # 直接字段
+        if "refreshToken" in obj:
+            refresh_token = obj.get("refreshToken")
+        # 嵌套在 credentials 中
+        elif isinstance(obj.get("credentials"), dict):
+            creds = obj["credentials"]
+            refresh_token = creds.get("refreshToken")
+            client_id = creds.get("clientId")
+            client_secret = creds.get("clientSecret")
+        
+        # 获取 clientId 和 clientSecret（如果在顶层）
+        if client_id is None:
+            client_id = obj.get("clientId")
+        if client_secret is None:
+            client_secret = obj.get("clientSecret")
+        
+        if not refresh_token or not isinstance(refresh_token, str):
+            record_missing(path, "缺少 refreshToken")
+            return
+        
+        refresh_token = refresh_token.strip()
+        if not refresh_token:
+            record_missing(path, "refreshToken 为空")
+            return
+        
+        # 判断认证类型
+        auth_type = "social"
+        if client_id and client_secret:
+            auth_type = "idc"
+            client_id = client_id.strip() if isinstance(client_id, str) else None
+            client_secret = client_secret.strip() if isinstance(client_secret, str) else None
+        
+        credentials.append(TokenCredential(
+            refresh_token=refresh_token,
+            auth_type=auth_type,
+            client_id=client_id if auth_type == "idc" else None,
+            client_secret=client_secret if auth_type == "idc" else None,
+        ))
 
     def handle_list(items: list, path: str, enforce_required: bool) -> None:
         for index, item in enumerate(items):
             item_path = f"{path}[{index}]"
             if isinstance(item, dict):
-                if "refreshToken" in item:
-                    add_token(item.get("refreshToken"), f"{item_path}.refreshToken")
-                elif (
+                if "refreshToken" in item or (
                     isinstance(item.get("credentials"), dict)
                     and "refreshToken" in item["credentials"]
                 ):
-                    add_token(item["credentials"].get("refreshToken"), f"{item_path}.credentials.refreshToken")
+                    add_credential(item, item_path)
                 else:
                     if enforce_required:
                         record_missing(item_path, "缺少 refreshToken")
                     handle_dict(item, item_path)
             elif isinstance(item, str):
-                add_token(item, item_path)
+                add_credential(item, item_path)
             elif isinstance(item, list):
                 handle_list(item, item_path, enforce_required)
             else:
@@ -2371,13 +2441,13 @@ def _extract_refresh_tokens(payload: object) -> tuple[list[str], int, list[str]]
                     record_missing(item_path, "类型不支持")
 
     def handle_dict(obj: dict, path: str) -> None:
-        if "refreshToken" in obj:
-            add_token(obj.get("refreshToken"), f"{path}.refreshToken" if path else "refreshToken")
-        if isinstance(obj.get("credentials"), dict) and "refreshToken" in obj["credentials"]:
-            add_token(
-                obj["credentials"].get("refreshToken"),
-                f"{path}.credentials.refreshToken" if path else "credentials.refreshToken"
-            )
+        # 检查顶层是否有 refreshToken
+        if "refreshToken" in obj or (
+            isinstance(obj.get("credentials"), dict)
+            and "refreshToken" in obj["credentials"]
+        ):
+            add_credential(obj, path)
+            return
 
         for key, value in obj.items():
             if isinstance(value, dict):
@@ -2391,19 +2461,20 @@ def _extract_refresh_tokens(payload: object) -> tuple[list[str], int, list[str]]
     elif isinstance(payload, dict):
         handle_dict(payload, "")
     elif isinstance(payload, str):
-        add_token(payload, "refreshToken")
+        add_credential(payload, "refreshToken")
 
-    return tokens, missing_required, missing_samples
+    return credentials, missing_required, missing_samples
 
 
-def _dedupe_tokens(tokens: list[str]) -> list[str]:
+def _dedupe_credentials(credentials: list[TokenCredential]) -> list[TokenCredential]:
+    """去重凭证列表，基于 refresh_token。"""
     seen: set[str] = set()
-    deduped: list[str] = []
-    for token in tokens:
-        if token in seen:
+    deduped: list[TokenCredential] = []
+    for cred in credentials:
+        if cred.refresh_token in seen:
             continue
-        seen.add(token)
-        deduped.append(token)
+        seen.add(cred.refresh_token)
+        deduped.append(cred)
     return deduped
 
 
@@ -2487,9 +2558,9 @@ async def _process_import_payload(
     anonymous: bool,
     payload: object
 ) -> tuple[dict, int]:
-    tokens, missing_required, missing_samples = _extract_refresh_tokens(payload)
-    tokens = _dedupe_tokens(tokens)
-    if not tokens:
+    credentials, missing_required, missing_samples = _extract_refresh_tokens(payload)
+    credentials = _dedupe_credentials(credentials)
+    if not credentials:
         message = "未找到可导入的 Refresh Token"
         if missing_required:
             message = f"{message}，缺少必填 {missing_required}。"
@@ -2499,38 +2570,40 @@ async def _process_import_payload(
             "error": message,
             "missing_required": missing_required,
         }, 400
-    if len(tokens) > IMPORT_TOKEN_MAX_COUNT:
-        return {"error": f"导入数量过多（{len(tokens)}），请拆分后导入"}, 400
+    if len(credentials) > IMPORT_TOKEN_MAX_COUNT:
+        return {"error": f"导入数量过多（{len(credentials)}），请拆分后导入"}, 400
 
     from kiro_gateway.database import user_db
 
-    pending_tokens: list[str] = []
+    pending_credentials: list[TokenCredential] = []
     skipped = 0
-    for token in tokens:
-        if user_db.token_exists(token):
+    for cred in credentials:
+        if user_db.token_exists(cred.refresh_token):
             skipped += 1
         else:
-            pending_tokens.append(token)
+            pending_credentials.append(cred)
 
     semaphore = asyncio.Semaphore(IMPORT_VALIDATE_CONCURRENCY)
 
-    async def validate_token(token: str) -> tuple[str, bool, str | None]:
+    async def validate_credential(cred: TokenCredential) -> tuple[TokenCredential, bool, str | None]:
         async with semaphore:
             try:
                 temp_manager = KiroAuthManager(
-                    refresh_token=token,
+                    refresh_token=cred.refresh_token,
+                    client_id=cred.client_id,
+                    client_secret=cred.client_secret,
                     region=settings.region,
                     profile_arn=settings.profile_arn
                 )
                 access_token = await temp_manager.get_access_token()
                 if not access_token:
-                    return token, False, "无法获取访问令牌"
-                return token, True, None
+                    return cred, False, "无法获取访问令牌"
+                return cred, True, None
             except Exception as exc:
-                return token, False, str(exc)
+                return cred, False, str(exc)
 
     validation_results = await asyncio.gather(
-        *(validate_token(token) for token in pending_tokens)
+        *(validate_credential(cred) for cred in pending_credentials)
     )
 
     imported = 0
@@ -2538,14 +2611,22 @@ async def _process_import_payload(
     failed = 0
     error_samples: list[str] = []
 
-    for token, ok, error in validation_results:
+    for cred, ok, error in validation_results:
         if not ok:
             invalid += 1
             if error and len(error_samples) < IMPORT_ERROR_SAMPLE_LIMIT:
-                error_samples.append(f"{_mask_token(token)}: {error}")
+                error_samples.append(f"{_mask_token(cred.refresh_token)}: {error}")
             continue
 
-        success, message = user_db.donate_token(user_id, token, visibility, anonymous)
+        success, message = user_db.donate_token(
+            user_id=user_id,
+            refresh_token=cred.refresh_token,
+            visibility=visibility,
+            anonymous=anonymous,
+            auth_type=cred.auth_type,
+            client_id=cred.client_id,
+            client_secret=cred.client_secret,
+        )
         if success:
             imported += 1
         else:
@@ -2554,9 +2635,9 @@ async def _process_import_payload(
             else:
                 failed += 1
                 if len(error_samples) < IMPORT_ERROR_SAMPLE_LIMIT:
-                    error_samples.append(f"{_mask_token(token)}: {message}")
+                    error_samples.append(f"{_mask_token(cred.refresh_token)}: {message}")
 
-    total = len(tokens)
+    total = len(credentials)
     message = (
         f"导入完成：成功 {imported}，已存在 {skipped}，无效 {invalid}，失败 {failed}。"
     )
@@ -2586,6 +2667,9 @@ async def _process_import_payload(
 async def user_donate_token(
     request: Request,
     refresh_token: str = Form(...),
+    auth_type: str = Form("social"),
+    client_id: str = Form(""),
+    client_secret: str = Form(""),
     visibility: str = Form("private"),
     anonymous: bool = Form(False),
     _csrf: None = Depends(require_same_origin)
@@ -2601,6 +2685,15 @@ async def user_donate_token(
 
     if visibility not in ("public", "private"):
         return JSONResponse(status_code=400, content={"error": "可见性无效"})
+    
+    if auth_type not in ("social", "idc"):
+        return JSONResponse(status_code=400, content={"error": "认证类型无效"})
+    
+    # IDC 模式必须提供 client_id 和 client_secret
+    client_id = client_id.strip() if client_id else None
+    client_secret = client_secret.strip() if client_secret else None
+    if auth_type == "idc" and (not client_id or not client_secret):
+        return JSONResponse(status_code=400, content={"error": "IDC 模式需要提供 Client ID 和 Client Secret"})
 
     from kiro_gateway.database import user_db
 
@@ -2610,6 +2703,8 @@ async def user_donate_token(
     try:
         temp_manager = KiroAuthManager(
             refresh_token=refresh_token,
+            client_id=client_id if auth_type == "idc" else None,
+            client_secret=client_secret if auth_type == "idc" else None,
             region=cfg.region,
             profile_arn=cfg.profile_arn
         )
@@ -2620,7 +2715,15 @@ async def user_donate_token(
         return {"success": False, "message": f"Token 验证失败：{str(e)}"}
 
     # Save token
-    success, message = user_db.donate_token(user.id, refresh_token, visibility, anonymous)
+    success, message = user_db.donate_token(
+        user_id=user.id,
+        refresh_token=refresh_token,
+        visibility=visibility,
+        anonymous=anonymous,
+        auth_type=auth_type,
+        client_id=client_id if auth_type == "idc" else None,
+        client_secret=client_secret if auth_type == "idc" else None,
+    )
     return {"success": success, "message": message}
 
 

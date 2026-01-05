@@ -4403,14 +4403,14 @@ def render_user_page(user) -> str:
     </div>
   </main>
   <div id="donateModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" style="display: none;">
-    <div class="card w-full max-w-md mx-4">
+    <div class="card w-full max-w-md mx-4" style="max-height: 90vh; overflow-y: auto;">
       <h3 class="text-lg font-bold mb-4">🎁 批量添加 Refresh Token</h3>
 
       <!-- Token 输入区域 -->
       <div class="mb-3">
         <label class="text-sm font-medium mb-2 block">📝 粘贴 Token</label>
-        <textarea id="donateTokens" class="w-full h-32 p-3 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);" placeholder="支持以下格式：&#10;• 每行一个 Token&#10;• 逗号分隔：token1, token2, token3&#10;• 混合格式"></textarea>
-        <p class="text-xs mt-1" style="color: var(--text-muted);">💡 支持多行或逗号分隔，自动去除空行和重复项</p>
+        <textarea id="donateTokens" class="w-full h-32 p-3 rounded-lg text-sm" style="background: var(--bg-input); border: 1px solid var(--border);" placeholder="支持以下格式：&#10;• Social: 每行一个 Token 或逗号分隔&#10;• IDC: JSON 格式 {&quot;clientId&quot;:&quot;...&quot;, &quot;clientSecret&quot;:&quot;...&quot;, &quot;refreshToken&quot;:&quot;...&quot;}"></textarea>
+        <p class="text-xs mt-1" style="color: var(--text-muted);">💡 IDC 用户请粘贴包含 clientId/clientSecret 的 JSON，系统自动识别认证类型</p>
       </div>
 
       <!-- 文件上传 -->
@@ -4544,6 +4544,11 @@ def render_user_page(user) -> str:
     }}
     .donate-mode-btn {{ color: var(--text-muted); }}
     .donate-mode-btn.active {{
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: white;
+    }}
+    .auth-type-btn {{ color: var(--text-muted); }}
+    .auth-type-btn.active {{
       background: linear-gradient(135deg, var(--primary), var(--accent));
       color: white;
     }}
@@ -5328,7 +5333,7 @@ def render_user_page(user) -> str:
       }}
       const anonymous = document.getElementById('donateAnonymous').checked;
 
-      // 构建请求
+      // 构建请求（后端自动识别 JSON 中的 clientId/clientSecret）
       const fd = new FormData();
       if (file) {{
         fd.append('file', file);

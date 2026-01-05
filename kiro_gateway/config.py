@@ -444,6 +444,7 @@ SLOW_MODELS: frozenset = frozenset({
 # ==================================================================================================
 
 KIRO_REFRESH_URL_TEMPLATE: str = "https://prod.{region}.auth.desktop.kiro.dev/refreshToken"
+AWS_SSO_OIDC_URL_TEMPLATE: str = "https://oidc.{region}.amazonaws.com/token"
 KIRO_API_HOST_TEMPLATE: str = "https://codewhisperer.{region}.amazonaws.com"
 KIRO_Q_HOST_TEMPLATE: str = "https://q.{region}.amazonaws.com"
 
@@ -502,6 +503,11 @@ APP_DESCRIPTION: str = "OpenAI & Anthropic compatible Kiro API gateway. Based on
 def get_kiro_refresh_url(region: str) -> str:
     """Return token refresh URL for specified region."""
     return KIRO_REFRESH_URL_TEMPLATE.format(region=region)
+
+
+def get_aws_sso_oidc_url(region: str) -> str:
+    """Return AWS SSO OIDC token URL for specified region."""
+    return AWS_SSO_OIDC_URL_TEMPLATE.format(region=region)
 
 
 def get_kiro_api_host(region: str) -> str:

@@ -24,11 +24,13 @@ Manages access token lifecycle:
 - Load credentials from .env or JSON file
 - Auto-refresh token on expiration
 - Thread-safe refresh using asyncio.Lock
+- Support for both Social (Kiro Desktop) and IDC (AWS SSO OIDC) authentication
 """
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -40,8 +42,25 @@ from kiro_gateway.config import (
     get_kiro_refresh_url,
     get_kiro_api_host,
     get_kiro_q_host,
+    get_aws_sso_oidc_url,
 )
 from kiro_gateway.utils import get_machine_fingerprint
+
+
+class AuthType(Enum):
+    """
+    认证类型枚举。
+    
+    SOCIAL: Kiro IDE 社交账号登录 (Google/GitHub等)
+        - 端点: https://prod.{region}.auth.desktop.kiro.dev/refreshToken
+        - 请求: {"refreshToken": "..."}
+    
+    IDC: AWS IAM Identity Center (Builder ID)
+        - 端点: https://oidc.{region}.amazonaws.com/token
+        - 请求: grant_type=refresh_token&client_id=...&client_secret=...&refresh_token=...
+    """
+    SOCIAL = "social"
+    IDC = "idc"
 
 
 class KiroAuthManager:
@@ -53,6 +72,7 @@ class KiroAuthManager:
     - Auto-refresh token on expiration
     - Checking expiration time (expiresAt)
     - Saving updated tokens to file
+    - Both Social (Kiro Desktop) and IDC (AWS SSO OIDC) authentication
 
     Attributes:
         profile_arn: AWS CodeWhisperer profile ARN
@@ -60,10 +80,21 @@ class KiroAuthManager:
         api_host: API host for current region
         q_host: Q API host for current region
         fingerprint: Unique machine fingerprint
+        auth_type: Authentication type (SOCIAL or IDC)
 
     Example:
+        >>> # Social 登录 (默认)
         >>> auth_manager = KiroAuthManager(
         ...     refresh_token="your_refresh_token",
+        ...     region="us-east-1"
+        ... )
+        >>> token = await auth_manager.get_access_token()
+        
+        >>> # IDC 登录 (AWS Builder ID)
+        >>> auth_manager = KiroAuthManager(
+        ...     refresh_token="your_refresh_token",
+        ...     client_id="your_client_id",
+        ...     client_secret="your_client_secret",
         ...     region="us-east-1"
         ... )
         >>> token = await auth_manager.get_access_token()
@@ -74,7 +105,9 @@ class KiroAuthManager:
         refresh_token: Optional[str] = None,
         profile_arn: Optional[str] = None,
         region: str = "us-east-1",
-        creds_file: Optional[str] = None
+        creds_file: Optional[str] = None,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
     ):
         """
         Initialize authentication manager.
@@ -84,15 +117,32 @@ class KiroAuthManager:
             profile_arn: AWS CodeWhisperer profile ARN
             region: AWS region (default us-east-1)
             creds_file: Path to JSON credentials file (optional)
+            client_id: OAuth client ID (for IDC mode, optional)
+            client_secret: OAuth client secret (for IDC mode, optional)
         """
         self._refresh_token = refresh_token
         self._profile_arn = profile_arn
         self._region = region
         self._creds_file = creds_file
+        
+        # IDC (AWS SSO OIDC) 特有字段
+        self._client_id: Optional[str] = client_id
+        self._client_secret: Optional[str] = client_secret
+        # AWS SSO OIDC 默认 scopes
+        self._scopes: list = [
+            "codewhisperer:completions",
+            "codewhisperer:analysis",
+            "codewhisperer:conversations",
+            "codewhisperer:transformations",
+            "codewhisperer:taskassist",
+        ]
 
         self._access_token: Optional[str] = None
         self._expires_at: Optional[datetime] = None
         self._lock = asyncio.Lock()
+        
+        # 认证类型，加载凭证后确定
+        self._auth_type: AuthType = AuthType.SOCIAL
 
         # Dynamic URLs based on region
         self._refresh_url = get_kiro_refresh_url(region)
@@ -105,6 +155,23 @@ class KiroAuthManager:
         # Load credentials from file if specified
         if creds_file:
             self._load_credentials_from_file(creds_file)
+        
+        # 根据凭证确定认证类型
+        self._detect_auth_type()
+    
+    def _detect_auth_type(self) -> None:
+        """
+        根据凭证检测认证类型。
+        
+        如果有 client_id 和 client_secret，则为 IDC 模式。
+        否则为 Social 模式。
+        """
+        if self._client_id and self._client_secret:
+            self._auth_type = AuthType.IDC
+            logger.info("检测到认证类型: IDC (AWS SSO OIDC)")
+        else:
+            self._auth_type = AuthType.SOCIAL
+            logger.debug("使用认证类型: Social (Kiro Desktop)")
 
     @staticmethod
     def _is_url(path: str) -> bool:
@@ -121,6 +188,8 @@ class KiroAuthManager:
         - profileArn: Profile ARN
         - region: AWS region
         - expiresAt: Token expiration time (ISO 8601)
+        - clientId: OAuth client ID (for IDC mode)
+        - clientSecret: OAuth client secret (for IDC mode)
 
         Args:
             file_path: Path to JSON file or remote URL (http/https)
@@ -155,6 +224,12 @@ class KiroAuthManager:
                 self._refresh_url = get_kiro_refresh_url(self._region)
                 self._api_host = get_kiro_api_host(self._region)
                 self._q_host = get_kiro_q_host(self._region)
+            
+            # IDC (AWS SSO OIDC) 特有字段
+            if 'clientId' in data:
+                self._client_id = data['clientId']
+            if 'clientSecret' in data:
+                self._client_secret = data['clientSecret']
 
             # Parse expiresAt
             if 'expiresAt' in data:
@@ -241,17 +316,32 @@ class KiroAuthManager:
         """
         Execute token refresh request with exponential backoff retry.
 
-        Sends POST request to Kiro API to obtain new access token.
-        Updates internal state and saves credentials to file.
+        根据认证类型路由到对应的刷新方法：
+        - SOCIAL: 使用 Kiro Desktop Auth 端点
+        - IDC: 使用 AWS SSO OIDC 端点
 
         Raises:
             ValueError: If refresh token is not set or response lacks accessToken
             httpx.HTTPError: On HTTP request error after all retries
         """
+        if self._auth_type == AuthType.IDC:
+            await self._refresh_token_idc()
+        else:
+            await self._refresh_token_social()
+    
+    async def _refresh_token_social(self) -> None:
+        """
+        使用 Social (Kiro Desktop Auth) 端点刷新 Token。
+        
+        端点: https://prod.{region}.auth.desktop.kiro.dev/refreshToken
+        方法: POST
+        Content-Type: application/json
+        请求体: {"refreshToken": "..."}
+        """
         if not self._refresh_token:
             raise ValueError("Refresh token is not set")
 
-        logger.info("Refreshing Kiro token...")
+        logger.info("通过 Social (Kiro Desktop Auth) 刷新 Token...")
 
         payload = {'refreshToken': self._refresh_token}
         headers = {
@@ -259,63 +349,126 @@ class KiroAuthManager:
             "User-Agent": f"KiroGateway-{self._fingerprint[:16]}",
         }
 
-        # 指数退避重试配置
+        data = await self._execute_refresh_request(self._refresh_url, json_data=payload, headers=headers)
+        self._process_refresh_response(data)
+    
+    async def _refresh_token_idc(self) -> None:
+        """
+        使用 IDC (AWS SSO OIDC) 端点刷新 Token。
+        
+        端点: https://oidc.{region}.amazonaws.com/token
+        方法: POST
+        Content-Type: application/json
+        请求体: {"clientId": "...", "clientSecret": "...", "grantType": "refresh_token", "refreshToken": "..."}
+        
+        注意: AWS SSO OIDC 使用 JSON 格式和 camelCase 字段名
+        """
+        if not self._refresh_token:
+            raise ValueError("Refresh token is not set")
+        if not self._client_id:
+            raise ValueError("Client ID is not set (required for IDC mode)")
+        if not self._client_secret:
+            raise ValueError("Client secret is not set (required for IDC mode)")
+
+        logger.info("通过 IDC (AWS SSO OIDC) 刷新 Token...")
+
+        url = get_aws_sso_oidc_url(self._region)
+        # AWS SSO OIDC 使用 JSON 格式和 camelCase 字段名
+        json_data = {
+            "clientId": self._client_id,
+            "clientSecret": self._client_secret,
+            "grantType": "refresh_token",
+            "refreshToken": self._refresh_token,
+        }
+        
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        data = await self._execute_refresh_request(url, json_data=json_data, headers=headers)
+        self._process_refresh_response(data)
+    
+    async def _execute_refresh_request(
+        self,
+        url: str,
+        json_data: Optional[dict] = None,
+        form_data: Optional[dict] = None,
+        headers: Optional[dict] = None
+    ) -> dict:
+        """
+        执行刷新请求，带指数退避重试。
+        
+        Args:
+            url: 请求 URL
+            json_data: JSON 请求体 (用于 Social 模式)
+            form_data: Form 请求体 (用于 IDC 模式)
+            headers: 请求头
+        
+        Returns:
+            响应 JSON 数据
+        """
         max_retries = 3
-        base_delay = 1.0  # 初始延迟1秒
+        base_delay = 1.0
         last_error = None
 
         for attempt in range(max_retries):
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
-                    response = await client.post(self._refresh_url, json=payload, headers=headers)
+                    if json_data:
+                        response = await client.post(url, json=json_data, headers=headers)
+                    else:
+                        response = await client.post(url, data=form_data, headers=headers)
                     response.raise_for_status()
-                    data = response.json()
-                break  # 成功，退出重试循环
+                    return response.json()
             except httpx.HTTPStatusError as e:
                 last_error = e
                 if e.response.status_code in (429, 500, 502, 503, 504):
-                    # 可重试的错误
                     delay = base_delay * (2 ** attempt)
                     logger.warning(
-                        f"Token refresh failed (attempt {attempt + 1}/{max_retries}): "
-                        f"HTTP {e.response.status_code}, retrying in {delay}s"
+                        f"Token 刷新失败 (尝试 {attempt + 1}/{max_retries}): "
+                        f"HTTP {e.response.status_code}, {delay}s 后重试"
                     )
                     await asyncio.sleep(delay)
                 else:
-                    # 不可重试的客户端错误 (4xx except 429)
                     raise
             except (httpx.ConnectError, httpx.TimeoutException) as e:
                 last_error = e
                 delay = base_delay * (2 ** attempt)
                 logger.warning(
-                    f"Token refresh failed (attempt {attempt + 1}/{max_retries}): "
-                    f"{type(e).__name__}, retrying in {delay}s"
+                    f"Token 刷新失败 (尝试 {attempt + 1}/{max_retries}): "
+                    f"{type(e).__name__}, {delay}s 后重试"
                 )
                 await asyncio.sleep(delay)
-        else:
-            # 所有重试都失败
-            logger.error(f"Token refresh failed after {max_retries} attempts")
-            raise last_error
-
+        
+        logger.error(f"Token 刷新在 {max_retries} 次尝试后失败")
+        raise last_error
+    
+    def _process_refresh_response(self, data: dict) -> None:
+        """
+        处理刷新响应，更新内部状态。
+        
+        Args:
+            data: 响应 JSON 数据
+        """
         new_access_token = data.get("accessToken")
         new_refresh_token = data.get("refreshToken")
         expires_in = data.get("expiresIn", 3600)
         new_profile_arn = data.get("profileArn")
 
         if not new_access_token:
-            raise ValueError(f"Response does not contain accessToken: {data}")
+            raise ValueError(f"响应中没有 accessToken: {data}")
 
-        # Calculate expiration time with buffer (minus 60 seconds)
+        # 计算过期时间（减去 60 秒缓冲）
         now = datetime.now(timezone.utc).replace(microsecond=0)
         new_expires_at = datetime.fromtimestamp(
             now.timestamp() + expires_in - 60,
             tz=timezone.utc
         )
 
-        # Save to file first (before updating state)
+        # 先保存到文件
         self._save_credentials_to_file(new_access_token, new_refresh_token, new_profile_arn)
 
-        # Update all state atomically after all operations succeed
+        # 更新内部状态
         self._access_token = new_access_token
         if new_refresh_token:
             self._refresh_token = new_refresh_token
@@ -323,7 +476,7 @@ class KiroAuthManager:
             self._profile_arn = new_profile_arn
         self._expires_at = new_expires_at
 
-        logger.info(f"Token refreshed, expires: {self._expires_at.isoformat()}")
+        logger.info(f"Token 刷新成功，过期时间: {self._expires_at.isoformat()}")
 
     async def get_access_token(self) -> str:
         """
@@ -384,3 +537,8 @@ class KiroAuthManager:
     def fingerprint(self) -> str:
         """Unique machine fingerprint."""
         return self._fingerprint
+    
+    @property
+    def auth_type(self) -> AuthType:
+        """Authentication type (SOCIAL or IDC)."""
+        return self._auth_type
