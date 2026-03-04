@@ -3476,6 +3476,10 @@ async def get_public_tokens():
             {
                 "id": t["id"],
                 "username": t["username"],
+                "status": t["status"],
+                "success_count": t["success_count"],
+                "fail_count": t["fail_count"],
+                "use_count": t["success_count"] + t["fail_count"],
                 "success_rate": round(t["success_rate"] * 100, 1),
                 "last_used": t["last_used"],
             }
