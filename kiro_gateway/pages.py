@@ -4542,7 +4542,7 @@ def render_user_page(user) -> str:
         <div>
           <input type="password" id="donateClientSecret" class="w-full px-3 py-2 rounded-lg text-sm" style="background: var(--bg-card); border: 1px solid var(--border);" placeholder="Client Secret">
         </div>
-        <p class="text-xs mt-2" style="color: var(--text-muted);">⚠️ IDC 模式下所有 Token 共用同一组 Client ID/Secret</p>
+        <p class="text-xs mt-2" style="color: var(--text-muted);">可选：填写后将覆盖导入文件中的 Client ID/Secret；留空则使用每条 Token 自带凭证。</p>
       </div>
 
       <!-- 文件上传 -->
@@ -5538,18 +5538,32 @@ def render_user_page(user) -> str:
       if (authType === 'idc') {{
         const clientId = document.getElementById('donateClientId').value.trim();
         const clientSecret = document.getElementById('donateClientSecret').value.trim();
-        // 检查 JSON 中是否包含 client_id/client_secret
+        // 检查 JSON 中是否包含 client_id/client_secret（支持文本输入和文件上传）
         let jsonHasClientInfo = false;
-        if (tokensText) {{
+        const hasClientInfoDeep = (obj) => {{
+          if (!obj || typeof obj !== 'object') return false;
+          if (Array.isArray(obj)) return obj.some(hasClientInfoDeep);
+          const topLevelPair = (obj.client_id || obj.clientId) && (obj.client_secret || obj.clientSecret);
+          const creds = obj.credentials || obj.credentials_kiro_rs || {{}};
+          const nestedPair = (creds.client_id || creds.clientId) && (creds.client_secret || creds.clientSecret);
+          if (topLevelPair || nestedPair) return true;
+          return Object.values(obj).some(hasClientInfoDeep);
+        }};
+        const detectJsonClientInfo = (text) => {{
+          if (!text) return false;
           try {{
-            const parsed = JSON.parse(tokensText);
-            const items = Array.isArray(parsed) ? parsed : [parsed];
-            jsonHasClientInfo = items.some(item => {{
-              const hasTopLevel = (item.client_id || item.clientId) && (item.client_secret || item.clientSecret);
-              const creds = item.credentials || item.credentials_kiro_rs || {{}};
-              const hasNested = (creds.client_id || creds.clientId) && (creds.client_secret || creds.clientSecret);
-              return hasTopLevel || hasNested;
-            }});
+            const parsed = JSON.parse(text);
+            return hasClientInfoDeep(parsed);
+          }} catch (e) {{
+            return false;
+          }}
+        }};
+        if (tokensText) {{
+          jsonHasClientInfo = detectJsonClientInfo(tokensText);
+        }} else if (file) {{
+          try {{
+            const fileText = await file.text();
+            jsonHasClientInfo = detectJsonClientInfo(fileText);
           }} catch (e) {{}}
         }}
         // 只有当 JSON 中没有 client 信息时才强制要求手动填写

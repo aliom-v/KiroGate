@@ -9,6 +9,7 @@ KiroGate Token 健康检查器。
 import asyncio
 from typing import Optional
 
+import httpx
 from loguru import logger
 
 from kiro_gateway.config import settings
@@ -74,32 +75,69 @@ class TokenHealthChecker:
 
         valid_count = 0
         invalid_count = 0
+        transient_fail_count = 0
 
         for token in tokens:
             try:
-                is_valid = await self.check_token(token.id)
-                if is_valid:
+                result = await self.check_token(token.id)
+                if result["is_valid"]:
                     valid_count += 1
                 else:
-                    invalid_count += 1
-                    # Mark token as invalid if it fails
-                    user_db.set_token_status(token.id, "invalid")
-                    logger.warning(f"Token {token.id} marked as invalid")
+                    if result["should_mark_invalid"]:
+                        invalid_count += 1
+                        user_db.set_token_status(token.id, "invalid")
+                        logger.warning(f"Token {token.id} marked as invalid: {result['error']}")
+                    else:
+                        transient_fail_count += 1
+                        logger.warning(
+                            f"Token {token.id} health check transient failure, keep active: {result['error']}"
+                        )
             except Exception as e:
                 logger.error(f"Failed to check token {token.id}: {e}")
-                invalid_count += 1
+                transient_fail_count += 1
 
             # Small delay between checks to avoid rate limiting
             await asyncio.sleep(1)
 
-        logger.info(f"Health check complete: {valid_count} valid, {invalid_count} invalid")
+        logger.info(
+            f"Health check complete: {valid_count} valid, {invalid_count} invalid, "
+            f"{transient_fail_count} transient_failed"
+        )
         return {
             "checked": len(tokens),
             "valid": valid_count,
-            "invalid": invalid_count
+            "invalid": invalid_count,
+            "transient_failed": transient_fail_count,
         }
 
-    async def check_token(self, token_id: int) -> bool:
+    @staticmethod
+    def _should_mark_invalid(error: Exception | str) -> bool:
+        """
+        Determine whether a failed health check indicates a permanent credential issue.
+
+        Only permanent auth/credential failures should deactivate tokens.
+        Transient failures (network/rate limit/5xx) keep token active.
+        """
+        if isinstance(error, httpx.HTTPStatusError):
+            status = error.response.status_code if error.response else None
+            if status in (400, 401, 403):
+                return True
+            return False
+
+        text = str(error).lower()
+        permanent_markers = (
+            "bad credentials",
+            "invalid_grant",
+            "unauthorized",
+            "forbidden",
+            "client id is not set",
+            "client secret is not set",
+            "refresh token is not set",
+            "响应中没有 accesstoken",
+        )
+        return any(marker in text for marker in permanent_markers)
+
+    async def check_token(self, token_id: int) -> dict:
         """
         Check a single token's validity.
 
@@ -107,18 +145,28 @@ class TokenHealthChecker:
             token_id: Token ID to check
 
         Returns:
-            True if token is valid, False otherwise
+            dict:
+                - is_valid: bool
+                - should_mark_invalid: bool
+                - error: str | None
         """
-        # Get decrypted token
-        refresh_token = user_db.get_decrypted_token(token_id)
-        if not refresh_token:
-            user_db.record_health_check(token_id, False, "Failed to decrypt token")
-            return False
+        # Get full credentials (supports IDC mode)
+        credentials = user_db.get_token_credentials(token_id)
+        if not credentials or not credentials.get("refresh_token"):
+            err = "Failed to load token credentials"
+            user_db.record_health_check(token_id, False, err)
+            return {
+                "is_valid": False,
+                "should_mark_invalid": True,
+                "error": err,
+            }
 
         # Try to get access token
         try:
             manager = KiroAuthManager(
-                refresh_token=refresh_token,
+                refresh_token=credentials["refresh_token"],
+                client_id=credentials.get("client_id"),
+                client_secret=credentials.get("client_secret"),
                 region=settings.region,
                 profile_arn=settings.profile_arn
             )
@@ -126,15 +174,28 @@ class TokenHealthChecker:
 
             if access_token:
                 user_db.record_health_check(token_id, True)
-                return True
-            else:
-                user_db.record_health_check(token_id, False, "No access token returned")
-                return False
+                return {
+                    "is_valid": True,
+                    "should_mark_invalid": False,
+                    "error": None,
+                }
+
+            err = "No access token returned"
+            user_db.record_health_check(token_id, False, err)
+            return {
+                "is_valid": False,
+                "should_mark_invalid": True,
+                "error": err,
+            }
 
         except Exception as e:
             error_msg = str(e)[:200]  # Truncate long error messages
             user_db.record_health_check(token_id, False, error_msg)
-            return False
+            return {
+                "is_valid": False,
+                "should_mark_invalid": self._should_mark_invalid(e),
+                "error": error_msg,
+            }
 
 
 # Global health checker instance
