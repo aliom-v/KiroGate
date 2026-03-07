@@ -60,14 +60,26 @@ class TokenHealthChecker:
 
     async def check_all_tokens(self) -> dict:
         """
-        Check all active tokens.
+        Check all active and invalid tokens.
 
         Returns:
             Summary of check results
         """
-        tokens = user_db.get_all_active_tokens()
+        # Check both active and invalid tokens so previously-failed tokens can recover
+        active_tokens = user_db.get_all_active_tokens()
+        invalid_tokens_dict = user_db.get_all_tokens_with_users(status="invalid")
+        invalid_tokens = [t for t in invalid_tokens_dict] if invalid_tokens_dict else []
+        
+        # Convert dict to token-like objects for invalid tokens
+        class InvalidToken:
+            def __init__(self, d):
+                self.id = d.get("id")
+                self.status = "invalid"
+        invalid_tokens = [InvalidToken(t) for t in invalid_tokens]
+        
+        tokens = active_tokens + invalid_tokens
         if not tokens:
-            logger.debug("No active tokens to check")
+            logger.debug("No tokens to check")
             return {"checked": 0, "valid": 0, "invalid": 0}
 
         logger.info(f"Starting health check for {len(tokens)} tokens")
@@ -80,11 +92,57 @@ class TokenHealthChecker:
                 is_valid = await self.check_token(token.id)
                 if is_valid:
                     valid_count += 1
+                    if token.status != "active":
+                        user_db.set_token_status(token.id, "active")
+                        logger.info(f"Token {token.id} recovered, marked as active")
                 else:
                     invalid_count += 1
-                    # Mark token as invalid if it fails
-                    user_db.set_token_status(token.id, "invalid")
-                    logger.warning(f"Token {token.id} marked as invalid")
+                    if token.status != "invalid":
+                        user_db.set_token_status(token.id, "invalid")
+                        logger.warning(f"Token {token.id} marked as invalid")
+            except Exception as e:
+                logger.error(f"Failed to check token {token.id}: {e}")
+                invalid_count += 1
+
+            # Small delay between checks to avoid rate limiting
+            await asyncio.sleep(1)
+
+        logger.info(f"Health check complete: {valid_count} valid, {invalid_count} invalid")
+        return {
+            "checked": len(tokens),
+            "valid": valid_count,
+            "invalid": invalid_count
+        }
+        """
+        Check all active and invalid tokens.
+
+        Returns:
+            Summary of check results
+        """
+        # Check both active and invalid tokens so previously-failed tokens can recover
+        tokens = user_db.get_all_active_tokens() + user_db.get_tokens_by_status("invalid")
+        if not tokens:
+            logger.debug("No tokens to check")
+            return {"checked": 0, "valid": 0, "invalid": 0}
+
+        logger.info(f"Starting health check for {len(tokens)} tokens")
+
+        valid_count = 0
+        invalid_count = 0
+
+        for token in tokens:
+            try:
+                is_valid = await self.check_token(token.id)
+                if is_valid:
+                    valid_count += 1
+                    if token.status != "active":
+                        user_db.set_token_status(token.id, "active")
+                        logger.info(f"Token {token.id} recovered, marked as active")
+                else:
+                    invalid_count += 1
+                    if token.status != "invalid":
+                        user_db.set_token_status(token.id, "invalid")
+                        logger.warning(f"Token {token.id} marked as invalid")
             except Exception as e:
                 logger.error(f"Failed to check token {token.id}: {e}")
                 invalid_count += 1
@@ -100,6 +158,47 @@ class TokenHealthChecker:
         }
 
     async def check_token(self, token_id: int) -> bool:
+        """
+        Check a single token's validity.
+
+        Args:
+            token_id: Token ID to check
+
+        Returns:
+            True if token is valid, False otherwise
+        """
+        # Get full token credentials (including client_id/client_secret for IDC tokens)
+        creds = user_db.get_token_credentials(token_id)
+        if not creds or not creds.get("refresh_token"):
+            user_db.record_health_check(token_id, False, "Failed to get token credentials")
+            return False
+
+        refresh_token = creds["refresh_token"]
+        client_id = creds.get("client_id")
+        client_secret = creds.get("client_secret")
+
+        # Try to get access token
+        try:
+            manager = KiroAuthManager(
+                refresh_token=refresh_token,
+                region=settings.region,
+                profile_arn=settings.profile_arn,
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            access_token = await manager.get_access_token()
+
+            if access_token:
+                user_db.record_health_check(token_id, True)
+                return True
+            else:
+                user_db.record_health_check(token_id, False, "No access token returned")
+                return False
+
+        except Exception as e:
+            error_msg = str(e)[:200]  # Truncate long error messages
+            user_db.record_health_check(token_id, False, error_msg)
+            return False
         """
         Check a single token's validity.
 

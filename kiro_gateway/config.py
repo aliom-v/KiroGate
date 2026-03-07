@@ -158,6 +158,10 @@ class Settings(BaseSettings):
     # 超过此限制的描述将被移至 system prompt
     tool_description_max_length: int = Field(default=10000, alias="TOOL_DESCRIPTION_MAX_LENGTH")
 
+    # 输出限制警告设置
+    inject_output_limit_warning: bool = Field(default=False, alias="INJECT_OUTPUT_LIMIT_WARNING")
+    output_token_limit: int = Field(default=6000, alias="OUTPUT_TOKEN_LIMIT")
+
     # ==================================================================================================
     # 日志设置
     # ==================================================================================================
@@ -475,14 +479,14 @@ GITHUB_USER_URL: str = "https://api.github.com/user"
 # ==================================================================================================
 
 # 慢模型列表 - 这些模型需要更长的超时时间
-SLOW_MODELS: frozenset = frozenset({
+SLOW_MODELS: frozenset[str] = frozenset({
+    "claude-opus-4-6",
+    "claude-opus-4-6-thinking",
     "claude-opus-4-5",
     "claude-opus-4-5-20251101",
     "claude-3-opus",
     "claude-3-opus-20240229",
 })
-
-
 # ==================================================================================================
 # Kiro API URL Templates
 # ==================================================================================================
@@ -498,6 +502,11 @@ KIRO_Q_HOST_TEMPLATE: str = "https://q.{region}.amazonaws.com"
 
 # External model names (OpenAI compatible) -> Kiro internal ID
 MODEL_MAPPING: Dict[str, str] = {
+    # Claude Opus 4.6 - Top tier model
+    "claude-opus-4-6": "claude-opus-4.6",
+    "claude-opus-4-6-20250601": "claude-opus-4.6",
+    "claude-opus-4-6-thinking": "claude-opus-4.6",
+
     # Claude Opus 4.5 - Top tier model
     "claude-opus-4-5": "claude-opus-4.5",
     "claude-opus-4-5-20251101": "claude-opus-4.5",
@@ -506,6 +515,11 @@ MODEL_MAPPING: Dict[str, str] = {
     "claude-haiku-4-5": "claude-haiku-4.5",
     "claude-haiku-4-5-20251001": "claude-haiku-4.5",
     "claude-haiku-4.5": "claude-haiku-4.5",
+
+    # Claude Sonnet 4.6 - Enhanced model
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "claude-sonnet-4-6-20250601": "claude-sonnet-4.6",
+    "claude-sonnet-4-6-thinking": "claude-sonnet-4.6",
 
     # Claude Sonnet 4.5 - Enhanced model
     "claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
@@ -524,14 +538,33 @@ MODEL_MAPPING: Dict[str, str] = {
 
 # Available models list for /v1/models endpoint
 AVAILABLE_MODELS: List[str] = [
+    # Claude Opus 4.6
+    "claude-opus-4-6",
+    "claude-opus-4-6-20250601",
+    "claude-opus-4-6-thinking",
+
+    # Claude Opus 4.5
     "claude-opus-4-5",
     "claude-opus-4-5-20251101",
+
+    # Claude Haiku 4.5
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001",
+
+    # Claude Sonnet 4.6
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-6-20250601",
+    "claude-sonnet-4-6-thinking",
+
+    # Claude Sonnet 4.5
     "claude-sonnet-4-5",
     "claude-sonnet-4-5-20250929",
+
+    # Claude Sonnet 4
     "claude-sonnet-4",
     "claude-sonnet-4-20250514",
+
+    # Claude 3.7
     "claude-3-7-sonnet-20250219",
 ]
 
