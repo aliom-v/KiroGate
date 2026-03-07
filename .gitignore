@@ -20,3 +20,4 @@ Thumbs.db
 # Env
 .env
 .env.local
+kiro_creds.json
