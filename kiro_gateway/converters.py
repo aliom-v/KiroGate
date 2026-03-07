@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from loguru import logger
 
-from kiro_gateway.config import get_internal_model_id, TOOL_DESCRIPTION_MAX_LENGTH
+from kiro_gateway.config import get_internal_model_id, TOOL_DESCRIPTION_MAX_LENGTH, AUTO_CHUNKING_ENABLED, AUTO_CHUNK_THRESHOLD
 from kiro_gateway.models import (
     ChatMessage,
     ChatCompletionRequest,
@@ -269,6 +269,203 @@ def extract_images_from_content(content: Any) -> Tuple[List[Dict[str, Any]], int
     return images, len(images)
 
 
+def _estimate_message_chars(msg) -> int:
+    """Estimate the character count of a message."""
+    total = 0
+    if hasattr(msg, 'content'):
+        content = msg.content
+    elif isinstance(msg, dict):
+        content = msg.get("content", "")
+    else:
+        return 0
+    
+    if isinstance(content, str):
+        total += len(content)
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    total += len(block.get("text", ""))
+                elif block.get("type") == "tool_result":
+                    total += len(str(block.get("content", "")))
+            elif isinstance(block, str):
+                total += len(block)
+    
+    # Also count tool_calls
+    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+        for tc in msg.tool_calls:
+            if isinstance(tc, dict):
+                total += len(str(tc.get("function", {}).get("arguments", "")))
+            elif hasattr(tc, 'function'):
+                total += len(str(getattr(tc.function, 'arguments', '')))
+    
+    return total
+
+
+def trim_history_to_fit(messages: list, max_chars: int = None) -> list:
+    """
+    Trim older history messages to fit within the Kiro API size limit.
+
+    Keeps the most recent messages and removes older ones from the beginning.
+    Ensures tool_use/tool_result pairs are kept together (removes both or neither).
+
+    Args:
+        messages: List of ChatMessage objects
+        max_chars: Maximum total character count. Uses AUTO_CHUNK_THRESHOLD if not specified.
+
+    Returns:
+        Trimmed list of messages
+    """
+    if not AUTO_CHUNKING_ENABLED:
+        return messages
+
+    if max_chars is None:
+        max_chars = AUTO_CHUNK_THRESHOLD
+
+    # Pre-compute per-message sizes to avoid O(n²) recalculation
+    sizes = [_estimate_message_chars(m) for m in messages]
+    total_chars = sum(sizes)
+
+    if total_chars <= max_chars:
+        return messages
+
+    logger.warning(f"Messages too long ({total_chars} chars > {max_chars} threshold), trimming history")
+
+    # Remove messages from the beginning until we fit, keeping at least the last message
+    trimmed = list(messages)
+    trimmed_sizes = list(sizes)
+
+    while len(trimmed) > 1 and total_chars > max_chars:
+        removed_size = trimmed_sizes.pop(0)
+        removed = trimmed.pop(0)
+        total_chars -= removed_size
+        logger.debug(f"Trimmed history message (role={removed.role}, ~{removed_size} chars)")
+
+        # If we removed an assistant message with tool_calls, also remove the following
+        # user message with tool_results to keep pairs consistent
+        if (removed.role == "assistant" and hasattr(removed, 'tool_calls') and removed.tool_calls
+                and trimmed and trimmed[0].role == "user"):
+            content = trimmed[0].content
+            has_tool_results = isinstance(content, list) and any(
+                isinstance(item, dict) and item.get("type") == "tool_result"
+                for item in content
+            )
+            if has_tool_results:
+                total_chars -= trimmed_sizes.pop(0)
+                trimmed.pop(0)
+                logger.debug("Also trimmed corresponding tool_results message")
+
+    removed_count = len(messages) - len(trimmed)
+    if removed_count > 0:
+        logger.info(f"Trimmed {removed_count} old messages to fit within size limit ({sum(sizes)} -> ~{total_chars} chars)")
+
+    return trimmed
+
+
+
+def validate_and_fix_tool_pairs(messages):
+    """Validates and fixes toolUses/toolResults pairing issues.
+
+    After OpenCode compaction, the history may contain:
+    - assistant messages with toolUses but no corresponding user messages with toolResults
+    - user messages with toolResults but no corresponding assistant toolUses
+
+    This causes Kiro API to return "Improperly formed request" error.
+
+    Strategy:
+    1. Collect all tool_use IDs from assistant messages
+    2. Collect all tool_result IDs from user messages
+    3. Remove orphan tool_calls (no matching tool_result)
+    4. Remove orphan tool_results (no matching tool_use)
+    5. Clean up empty messages
+    """
+    if not messages:
+        return messages
+
+    def _get_tc_id(tc):
+        """Extract tool_call ID from either dict or object format."""
+        if isinstance(tc, dict):
+            return tc.get('id')
+        return getattr(tc, 'id', None)
+
+    # Pass 1: Collect all tool_use IDs and tool_result IDs
+    all_tool_use_ids = set()
+    all_tool_result_ids = set()
+
+    for msg in messages:
+        if msg.role == "assistant" and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tc_id = _get_tc_id(tc)
+                if tc_id:
+                    all_tool_use_ids.add(tc_id)
+        elif msg.role == "user" and isinstance(msg.content, list):
+            for item in msg.content:
+                if isinstance(item, dict) and item.get("type") == "tool_result":
+                    tool_use_id = item.get("tool_use_id", "")
+                    if tool_use_id:
+                        all_tool_result_ids.add(tool_use_id)
+        elif msg.role == "tool" and msg.tool_call_id:
+            all_tool_result_ids.add(msg.tool_call_id)
+
+    matched_ids = all_tool_use_ids & all_tool_result_ids
+
+    # Pass 2: Fix messages — keep only matched pairs
+    fixed_messages = []
+    for msg in messages:
+        if msg.role == "assistant" and msg.tool_calls:
+            original_count = len(msg.tool_calls)
+            filtered_calls = [tc for tc in msg.tool_calls
+                              if not _get_tc_id(tc) or _get_tc_id(tc) in matched_ids]
+
+            removed = original_count - len(filtered_calls)
+            if removed:
+                logger.warning(f"Removed {removed} orphan tool_calls without matching toolResults")
+
+            msg.tool_calls = filtered_calls or None
+
+            content_text = extract_text_content(msg.content) if msg.content else ""
+            if not msg.tool_calls and not content_text.strip():
+                logger.warning("Removing empty assistant message (all tool_calls were orphans)")
+                continue
+
+            fixed_messages.append(msg)
+
+        elif msg.role == "user" and isinstance(msg.content, list):
+            filtered_content = []
+            removed_results = 0
+
+            for item in msg.content:
+                if isinstance(item, dict) and item.get("type") == "tool_result":
+                    if item.get("tool_use_id", "") in matched_ids:
+                        filtered_content.append(item)
+                    else:
+                        removed_results += 1
+                else:
+                    filtered_content.append(item)
+
+            if removed_results:
+                logger.warning(f"Removed {removed_results} orphan tool_results without matching toolUse")
+
+            if not filtered_content:
+                logger.warning("Removing empty user message (all tool_results were orphans)")
+                continue
+
+            msg.content = filtered_content
+            fixed_messages.append(msg)
+
+        elif msg.role == "tool":
+            if msg.tool_call_id and msg.tool_call_id not in matched_ids:
+                logger.warning(f"Removing orphan tool message for tool_call_id={msg.tool_call_id}")
+                continue
+            fixed_messages.append(msg)
+
+        else:
+            fixed_messages.append(msg)
+
+    return fixed_messages
+
+
+
 def merge_adjacent_messages(messages: List[ChatMessage]) -> List[ChatMessage]:
     """
     Объединяет соседние сообщения с одинаковой ролью и обрабатывает tool messages.
@@ -373,6 +570,7 @@ def merge_adjacent_messages(messages: List[ChatMessage]) -> List[ChatMessage]:
     return merged
 
 
+
 def build_kiro_history(messages: List[ChatMessage], model_id: str) -> List[Dict[str, Any]]:
     """
     Строит массив history для Kiro API из OpenAI messages.
@@ -389,21 +587,13 @@ def build_kiro_history(messages: List[ChatMessage], model_id: str) -> List[Dict[
 
     Returns:
         Список словарей для поля history в Kiro API
-
-    Example:
-        >>> msgs = [ChatMessage(role="user", content="Hello")]
-        >>> history = build_kiro_history(msgs, "claude-sonnet-4")
-        >>> history[0]["userInputMessage"]["content"]
-        'Hello'
     """
     history = []
 
     for msg in messages:
         if msg.role == "user":
-            # 提取文本内容
             content = extract_text_content(msg.content)
 
-            # 检查历史消息中是否有图片，用占位符替代
             _, image_count = extract_images_from_content(msg.content)
             if image_count > 0:
                 image_placeholder = f"\n[此消息包含 {image_count} 张图片，已在历史记录中省略]"
@@ -411,12 +601,11 @@ def build_kiro_history(messages: List[ChatMessage], model_id: str) -> List[Dict[
                 logger.debug(f"Replaced {image_count} image(s) with placeholder in history message")
 
             user_input = {
-                "content": content,
+                "content": content or "(empty)",
                 "modelId": model_id,
                 "origin": "AI_EDITOR",
             }
 
-            # Обработка tool_results (ответы на tool calls)
             tool_results = _extract_tool_results(msg.content)
             if tool_results:
                 user_input["userInputMessageContext"] = {"toolResults": tool_results}
@@ -426,9 +615,8 @@ def build_kiro_history(messages: List[ChatMessage], model_id: str) -> List[Dict[
         elif msg.role == "assistant":
             content = extract_text_content(msg.content)
 
-            assistant_response = {"content": content}
+            assistant_response = {"content": content or "(empty)"}
 
-            # Обработка tool_calls
             tool_uses = _extract_tool_uses(msg)
             if tool_uses:
                 assistant_response["toolUses"] = tool_uses
@@ -436,10 +624,45 @@ def build_kiro_history(messages: List[ChatMessage], model_id: str) -> List[Dict[
             history.append({"assistantResponseMessage": assistant_response})
 
         elif msg.role == "system":
-            # System prompt обрабатывается отдельно в build_kiro_payload
             pass
 
+    # Safety: ensure strict alternation of user/assistant messages
+    # Kiro API requires this pattern. Remove consecutive same-type entries.
+    if len(history) > 1:
+        cleaned = [history[0]]
+        for entry in history[1:]:
+            prev_type = "user" if "userInputMessage" in cleaned[-1] else "assistant"
+            curr_type = "user" if "userInputMessage" in entry else "assistant"
+            if prev_type == curr_type:
+                # Merge into previous entry
+                if curr_type == "user":
+                    prev_content = cleaned[-1]["userInputMessage"]["content"]
+                    curr_content = entry["userInputMessage"]["content"]
+                    cleaned[-1]["userInputMessage"]["content"] = f"{prev_content}\n{curr_content}"
+                    # Merge tool_results
+                    prev_ctx = cleaned[-1]["userInputMessage"].get("userInputMessageContext", {})
+                    curr_ctx = entry["userInputMessage"].get("userInputMessageContext", {})
+                    if curr_ctx.get("toolResults"):
+                        prev_results = prev_ctx.get("toolResults", [])
+                        prev_results.extend(curr_ctx["toolResults"])
+                        cleaned[-1]["userInputMessage"]["userInputMessageContext"] = {"toolResults": prev_results}
+                else:
+                    prev_content = cleaned[-1]["assistantResponseMessage"]["content"]
+                    curr_content = entry["assistantResponseMessage"]["content"]
+                    cleaned[-1]["assistantResponseMessage"]["content"] = f"{prev_content}\n{curr_content}"
+                    # Merge toolUses
+                    prev_uses = cleaned[-1]["assistantResponseMessage"].get("toolUses", [])
+                    curr_uses = entry["assistantResponseMessage"].get("toolUses", [])
+                    if curr_uses:
+                        prev_uses.extend(curr_uses)
+                        cleaned[-1]["assistantResponseMessage"]["toolUses"] = prev_uses
+                logger.debug(f"Merged consecutive {curr_type} history entries")
+            else:
+                cleaned.append(entry)
+        history = cleaned
+
     return history
+
 
 
 def _extract_tool_results(content: Any) -> List[Dict[str, Any]]:
@@ -551,28 +774,59 @@ def process_tools_with_long_descriptions(
     return processed_tools if processed_tools else None, tool_documentation
 
 
+
 def _extract_tool_uses(msg: ChatMessage) -> List[Dict[str, Any]]:
     """
     Извлекает tool uses из сообщения assistant.
-    
+
     Args:
         msg: Сообщение assistant
-    
+
     Returns:
         Список tool uses в формате Kiro
     """
     tool_uses = []
-    
+
     # Из поля tool_calls
     if msg.tool_calls:
         for tc in msg.tool_calls:
-            if isinstance(tc, dict):
+            try:
+                if isinstance(tc, dict):
+                    func = tc.get("function", {})
+                    name = func.get("name", "")
+                    arguments = func.get("arguments", "{}")
+                    tc_id = tc.get("id", "")
+                else:
+                    # Object format (e.g., from Pydantic model)
+                    func = getattr(tc, 'function', None)
+                    if func:
+                        name = getattr(func, 'name', '') or ''
+                        arguments = getattr(func, 'arguments', '{}') or '{}'
+                    else:
+                        name = ""
+                        arguments = "{}"
+                    tc_id = getattr(tc, 'id', '') or ''
+
+                # Parse arguments safely
+                if isinstance(arguments, str):
+                    try:
+                        parsed_input = json.loads(arguments)
+                    except (json.JSONDecodeError, TypeError):
+                        parsed_input = {"raw": arguments}
+                elif isinstance(arguments, dict):
+                    parsed_input = arguments
+                else:
+                    parsed_input = {}
+
                 tool_uses.append({
-                    "name": tc.get("function", {}).get("name", ""),
-                    "input": json.loads(tc.get("function", {}).get("arguments", "{}")),
-                    "toolUseId": tc.get("id", "")
+                    "name": name,
+                    "input": parsed_input,
+                    "toolUseId": tc_id
                 })
-    
+            except Exception as e:
+                logger.warning(f"Failed to extract tool_use: {e}, skipping")
+                continue
+
     # Из content (если там есть tool_use)
     if isinstance(msg.content, list):
         for item in msg.content:
@@ -582,8 +836,9 @@ def _extract_tool_uses(msg: ChatMessage) -> List[Dict[str, Any]]:
                     "input": item.get("input", {}),
                     "toolUseId": item.get("id", "")
                 })
-    
+
     return tool_uses
+
 
 
 def _extract_system_and_tool_docs(
@@ -661,14 +916,23 @@ def build_kiro_payload(
     # 注入 thinking 标签到 system prompt（如果启用）
     system_prompt = inject_thinking_hint(system_prompt, thinking_config)
 
+    # Validate and fix toolUses/toolResults pairs BEFORE merging
+    # (fixes compaction issue where OpenCode removes toolResults)
+    validated_messages = validate_and_fix_tool_pairs(non_system_messages)
+    # Trim history if too long to avoid CONTENT_LENGTH_EXCEEDS_THRESHOLD
+    validated_messages = trim_history_to_fit(validated_messages)
     # Объединяем соседние сообщения с одинаковой ролью
-    merged_messages = merge_adjacent_messages(non_system_messages)
+    merged_messages = merge_adjacent_messages(validated_messages)
     
     if not merged_messages:
         raise ValueError("没有可发送的消息")
     
     # Получаем внутренний ID модели
     model_id = get_internal_model_id(request_data.model)
+    
+    # Split last message if it contains tool_results mixed with text.
+    # Kiro API expects tool_results in history (paired with toolUse), not in currentMessage.
+    merged_messages = _split_last_message_tool_results(merged_messages)
     
     # Строим историю (все сообщения кроме последнего)
     history_messages = merged_messages[:-1] if len(merged_messages) > 1 else []
@@ -746,6 +1010,62 @@ def build_kiro_payload(
         payload["profileArn"] = profile_arn
     
     return payload
+
+def _split_last_message_tool_results(messages: List[ChatMessage]) -> List[ChatMessage]:
+    """
+    Split the last user message if it contains both tool_results and text.
+
+    Kiro API expects tool_results in history (paired with their toolUse),
+    not in currentMessage. If tool_results end up in currentMessage.toolResults,
+    the API sees orphan toolUse in history → "Improperly formed request".
+
+    Args:
+        messages: Merged message list
+
+    Returns:
+        Messages with last message split if needed
+    """
+    if not messages:
+        return messages
+
+    last_msg = messages[-1]
+    if last_msg.role != "user" or not isinstance(last_msg.content, list):
+        return messages
+
+    tool_result_items = [item for item in last_msg.content
+                         if isinstance(item, dict) and item.get("type") == "tool_result"]
+    non_tool_items = [item for item in last_msg.content
+                      if not (isinstance(item, dict) and item.get("type") == "tool_result")]
+
+    if not tool_result_items:
+        return messages
+
+    # Move tool_results to a separate history message
+    tool_results_msg = ChatMessage(role="user", content=tool_result_items)
+    base = messages[:-1] + [tool_results_msg]
+
+    if non_tool_items:
+        # Extract text from remaining items
+        logger.info(f"Splitting last message: {len(tool_result_items)} tool_results → history, "
+                     f"{len(non_tool_items)} text items → currentMessage")
+        if (len(non_tool_items) == 1 and isinstance(non_tool_items[0], dict)
+                and non_tool_items[0].get("type") == "text"):
+            text_content = non_tool_items[0].get("text", "")
+        else:
+            text_content = " ".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in non_tool_items
+            ).strip()
+        base.append(ChatMessage(role="user", content=text_content or "Continue"))
+    else:
+        # Only tool_results, no text
+        logger.info(f"Last message has only tool_results ({len(tool_result_items)}), "
+                     "moving to history and adding placeholder currentMessage")
+        base.append(ChatMessage(role="user", content="Please process the tool results."))
+
+    return base
+
+
 
 
 def _build_user_input_context(

@@ -35,7 +35,7 @@ from loguru import logger
 from kiro_gateway.auth import KiroAuthManager
 from kiro_gateway.cache import ModelInfoCache
 from kiro_gateway.converters import build_kiro_payload, convert_anthropic_to_openai_request, is_thinking_enabled
-from kiro_gateway.config import settings
+from kiro_gateway.config import settings, AUTO_CHUNKING_ENABLED, AUTO_CHUNK_THRESHOLD
 from kiro_gateway.http_client import KiroHttpClient
 from kiro_gateway.models import (
     ChatCompletionRequest,
@@ -48,7 +48,6 @@ from kiro_gateway.streaming import (
     collect_anthropic_response,
 )
 from kiro_gateway.utils import generate_conversation_id, get_kiro_headers
-from kiro_gateway.config import settings, AUTO_CHUNKING_ENABLED, AUTO_CHUNK_THRESHOLD
 from kiro_gateway.metrics import metrics
 
 
@@ -65,6 +64,50 @@ try:
     from kiro_gateway.debug_logger import debug_logger
 except ImportError:
     debug_logger = None
+
+
+def _maybe_build_retry_payload(error_text, kiro_payload, openai_request,
+                                conversation_id, auth_manager, thinking_config):
+    """
+    Inspect a Kiro API error and return a modified payload for retry, or None if no retry.
+
+    Handles two known error patterns:
+    - CONTENT_LENGTH_EXCEEDS_THRESHOLD: aggressively trim history to 1/3
+    - Improperly formed request: strip history and orphan toolResults entirely
+    """
+    if "CONTENT_LENGTH_EXCEEDS_THRESHOLD" in error_text:
+        logger.warning("CONTENT_LENGTH_EXCEEDS_THRESHOLD — retrying with aggressively trimmed history")
+        try:
+            payload = build_kiro_payload(
+                openai_request, conversation_id,
+                auth_manager.profile_arn or "",
+                thinking_config=thinking_config
+            )
+        except ValueError:
+            return None
+        history = payload.get("conversationState", {}).get("history")
+        if history and len(history) > 4:
+            keep = max(4, len(history) // 3)
+            payload["conversationState"]["history"] = history[-keep:]
+            logger.info(f"Aggressively trimmed history from {len(history)} to {keep} entries")
+        return payload
+
+    if "Improperly formed request" in error_text:
+        logger.warning("Improperly formed request — retrying without history")
+        conv_state = kiro_payload.get("conversationState", {})
+        conv_state.pop("history", None)
+        logger.info("Removed all history from payload for retry")
+        # Remove orphan toolResults from currentMessage (no history = no matching toolUse)
+        current_msg = conv_state.get("currentMessage", {}).get("userInputMessage", {})
+        ctx = current_msg.get("userInputMessageContext", {})
+        if "toolResults" in ctx:
+            del ctx["toolResults"]
+            logger.info("Removed orphan toolResults from currentMessage (no history)")
+            if not ctx and "userInputMessageContext" in current_msg:
+                del current_msg["userInputMessageContext"]
+        return kiro_payload
+
+    return None
 
 
 class RequestHandler:
@@ -464,6 +507,14 @@ class RequestHandler:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+        # Safety check: estimate payload size and log warning
+        payload_json = json.dumps(kiro_payload, ensure_ascii=False)
+        payload_size = len(payload_json)
+        logger.info(f"Kiro payload size: {payload_size} chars")
+        if payload_size > AUTO_CHUNK_THRESHOLD:
+            logger.warning(f"Payload size ({payload_size}) exceeds threshold ({AUTO_CHUNK_THRESHOLD}), "
+                          "history was already trimmed but payload is still large")
+
         # 记录 Kiro 请求
         RequestHandler.log_kiro_request(kiro_payload)
 
@@ -480,6 +531,26 @@ class RequestHandler:
                 stream=True,
                 model=request_data.model
             )
+
+            # Retry on known Kiro API errors
+            if response.status_code != 200:
+                error_text = ""
+                try:
+                    error_text = (await response.aread()).decode('utf-8', errors='replace')
+                except Exception:
+                    pass
+
+                retry_payload = _maybe_build_retry_payload(error_text, kiro_payload, openai_request,
+                                                           conversation_id, auth_manager, thinking_config)
+                if retry_payload is not None:
+                    try:
+                        await response.aclose()
+                    except Exception:
+                        pass
+                    kiro_payload = retry_payload
+                    response = await http_client.request_with_retry(
+                        "POST", url, kiro_payload, stream=True, model=request_data.model
+                    )
 
             if response.status_code != 200:
                 duration_ms = (time.time() - start_time) * 1000

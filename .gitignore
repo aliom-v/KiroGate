@@ -17,6 +17,18 @@
 .DS_Store
 Thumbs.db
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Debug logs
+debug_logs/
+
 # Env
 .env
 .env.local
+kiro_creds.json
+
+# Notes
+kirogate-progress.md

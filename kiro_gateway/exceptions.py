@@ -71,6 +71,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     Логирует детали ошибки и возвращает информативный ответ.
     Корректно обрабатывает bytes объекты в ошибках, преобразуя их в строки.
     
+    For /v1/ API endpoints, returns OpenAI-compatible error format.
+    
     Args:
         request: FastAPI Request объект
         exc: Исключение валидации от Pydantic
@@ -87,7 +89,88 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Validation error (422): {sanitized_errors}")
     logger.error(f"Request body: {body_str[:500]}...")
     
+    # For /v1/ API endpoints, return OpenAI-compatible error format
+    # OpenCode (@ai-sdk/openai-compatible) and OpenClaw (openai-completions)
+    # both expect {"error": {"message": "...", "type": "...", "code": ...}}
+    path = request.url.path
+    if path.startswith("/v1/"):
+        # Build a human-readable error message from validation errors
+        error_parts = []
+        for err in sanitized_errors:
+            loc = " -> ".join(str(l) for l in err.get("loc", []))
+            msg = err.get("msg", "unknown error")
+            error_parts.append(f"{loc}: {msg}" if loc else msg)
+        error_message = "; ".join(error_parts) if error_parts else "Request validation failed"
+        
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "message": error_message,
+                    "type": "invalid_request_error",
+                    "code": "validation_error"
+                }
+            },
+        )
+    
     return JSONResponse(
         status_code=422,
         content={"detail": sanitized_errors, "body": body_str[:500]},
+    )
+
+
+async def http_exception_handler(request: Request, exc) -> JSONResponse:
+    """
+    Global HTTPException handler that returns OpenAI-compatible error format
+    for /v1/ API endpoints.
+    
+    OpenCode (@ai-sdk/openai-compatible) and OpenClaw (openai-completions api)
+    both expect error responses in the format:
+    {"error": {"message": "...", "type": "...", "code": ...}}
+    
+    FastAPI's default HTTPException returns {"detail": "..."} which these
+    SDKs cannot parse correctly.
+    
+    Args:
+        request: FastAPI Request
+        exc: HTTPException
+    
+    Returns:
+        JSONResponse with OpenAI-compatible error format for API endpoints,
+        or default format for non-API endpoints
+    """
+    path = request.url.path
+    status_code = getattr(exc, 'status_code', 500)
+    detail = getattr(exc, 'detail', 'Internal server error')
+    
+    if path.startswith("/v1/"):
+        # Map HTTP status codes to OpenAI error types
+        error_type_map = {
+            400: "invalid_request_error",
+            401: "authentication_error",
+            403: "permission_error",
+            404: "not_found_error",
+            422: "invalid_request_error",
+            429: "rate_limit_error",
+            500: "server_error",
+            502: "server_error",
+            503: "server_error",
+        }
+        error_type = error_type_map.get(status_code, "api_error")
+        
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "error": {
+                    "message": str(detail),
+                    "type": error_type,
+                    "code": status_code
+                }
+            },
+        )
+    
+    # For non-API endpoints, use default format
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": str(detail)},
     )
