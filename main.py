@@ -49,7 +49,7 @@ from kiro_gateway.config import (
 from kiro_gateway.auth import KiroAuthManager
 from kiro_gateway.cache import ModelInfoCache
 from kiro_gateway.routes import router, limiter, rate_limit_handler
-from kiro_gateway.exceptions import validation_exception_handler
+from kiro_gateway.exceptions import validation_exception_handler, http_exception_handler
 from kiro_gateway.middleware import RequestTrackingMiddleware, MetricsMiddleware, SiteGuardMiddleware
 from kiro_gateway.http_client import close_global_http_client
 
@@ -316,6 +316,10 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # 注册验证错误处理器
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+# 注册 HTTPException 处理器 (OpenAI 兼容错误格式)
+from fastapi import HTTPException as _HTTPException
+app.add_exception_handler(_HTTPException, http_exception_handler)
 
 
 # 404 页面处理器

@@ -106,6 +106,7 @@ from kiro_gateway.streaming import (
 # Exceptions
 from kiro_gateway.exceptions import (
     validation_exception_handler,
+    http_exception_handler,
     sanitize_validation_errors,
 )
 
@@ -162,5 +163,6 @@ __all__ = [
 
     # Exceptions
     "validation_exception_handler",
+    "http_exception_handler",
     "sanitize_validation_errors",
 ]
