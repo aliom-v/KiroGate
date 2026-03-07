@@ -23,7 +23,7 @@ services:
       - REFRESH_TOKEN=${REFRESH_TOKEN:-}
 
       # 方式二: 挂载凭证文件 (见下方 volumes)
-      - KIRO_CREDS_FILE=${KIRO_CREDS_FILE:-}
+      - KIRO_CREDS_FILE=/app/credentials.json
 
       # 可选配置
       - PROFILE_ARN=${PROFILE_ARN:-}
@@ -65,9 +65,8 @@ services:
     volumes:
       # 持久化统计数据（使用命名卷，自动处理权限）
       - kirogate_data:/app/data
-      # 如果使用凭证文件，取消下面的注释
-      # - ~/.aws/sso/cache/kiro-auth-token.json:/app/credentials.json:ro
-      # 然后设置 KIRO_CREDS_FILE=/app/credentials.json
+      # IDC 凭证文件
+      - ./kiro_creds.json:/app/credentials.json:ro
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
