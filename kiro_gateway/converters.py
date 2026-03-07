@@ -269,6 +269,49 @@ def extract_images_from_content(content: Any) -> Tuple[List[Dict[str, Any]], int
     return images, len(images)
 
 
+def validate_and_fix_tool_pairs(messages):
+    """Validates and fixes toolUses/toolResults pairing issues.
+    
+    After OpenCode compaction, the history may contain:
+    - assistant messages with toolUses
+    - corresponding user messages (with toolResults) are deleted
+    
+    This causes Kiro API to return "Improperly formed request" error.
+    """
+    if not messages:
+        return messages
+    
+    valid_tool_use_ids = set()
+    for msg in messages:
+        if msg.role == "user":
+            content = msg.content
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_result":
+                        tool_use_id = item.get("tool_use_id", "")
+                        if tool_use_id:
+                            valid_tool_use_ids.add(tool_use_id)
+    
+    if not valid_tool_use_ids:
+        return messages
+    
+    fixed_messages = []
+    for msg in messages:
+        if msg.role == "assistant" and msg.tool_calls:
+            original_count = len(msg.tool_calls)
+            filtered_calls = [
+                tc for tc in msg.tool_calls
+                if tc.id and tc.id in valid_tool_use_ids
+            ]
+            if len(filtered_calls) < original_count:
+                removed_count = original_count - len(filtered_calls)
+                print(f"Warning: Removed {removed_count} orphan tool_calls without matching toolResults")
+                msg.tool_calls = filtered_calls
+        fixed_messages.append(msg)
+    
+    return fixed_messages
+
+
 def merge_adjacent_messages(messages: List[ChatMessage]) -> List[ChatMessage]:
     """
     Объединяет соседние сообщения с одинаковой ролью и обрабатывает tool messages.
@@ -663,6 +706,8 @@ def build_kiro_payload(
 
     # Объединяем соседние сообщения с одинаковой ролью
     merged_messages = merge_adjacent_messages(non_system_messages)
+    # Validate and fix toolUses/toolResults pairs (fixes compaction issue)
+    merged_messages = validate_and_fix_tool_pairs(merged_messages)
     
     if not merged_messages:
         raise ValueError("没有可发送的消息")
