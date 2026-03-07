@@ -13,6 +13,7 @@ services:
     container_name: kirogate
     restart: unless-stopped
     ports:
+      - "8833:8000"
       - "8000:8000"
     environment:
       # 必填: 代理服务器密码
@@ -55,6 +56,11 @@ services:
       # 静态资源代理配置
       - STATIC_ASSETS_PROXY_ENABLED=${STATIC_ASSETS_PROXY_ENABLED:-true}
       - STATIC_ASSETS_PROXY_BASE=${STATIC_ASSETS_PROXY_BASE:-https://proxy.jhun.edu.kg}
+
+      # 自动分片配置（长文档处理）
+      - AUTO_CHUNKING_ENABLED=${AUTO_CHUNKING_ENABLED:-true}
+      - AUTO_CHUNK_THRESHOLD=${AUTO_CHUNK_THRESHOLD:-150000}
+      - CHUNK_MAX_CHARS=${CHUNK_MAX_CHARS:-100000}
 
     volumes:
       # 持久化统计数据（使用命名卷，自动处理权限）

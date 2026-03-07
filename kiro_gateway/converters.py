@@ -299,10 +299,12 @@ def validate_and_fix_tool_pairs(messages):
     for msg in messages:
         if msg.role == "assistant" and msg.tool_calls:
             original_count = len(msg.tool_calls)
-            filtered_calls = [
-                tc for tc in msg.tool_calls
-                if tc.id and tc.id in valid_tool_use_ids
-            ]
+            # Handle both object and dict formats for tool_calls
+            filtered_calls = []
+            for tc in msg.tool_calls:
+                tc_id = tc.id if hasattr(tc, 'id') else tc.get('id') if isinstance(tc, dict) else None
+                if tc_id and tc_id in valid_tool_use_ids:
+                    filtered_calls.append(tc)
             if len(filtered_calls) < original_count:
                 removed_count = original_count - len(filtered_calls)
                 print(f"Warning: Removed {removed_count} orphan tool_calls without matching toolResults")
